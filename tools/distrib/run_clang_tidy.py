@@ -20,15 +20,9 @@ import argparse
 import multiprocessing
 
 sys.path.append(
-    os.path.join(
-        os.path.dirname(sys.argv[0]), '..', 'run_tests', 'python_utils'))
+    os.path.join(os.path.dirname(sys.argv[0]), '..', 'run_tests',
+                 'python_utils'))
 import jobset
-
-GRPC_CHECKS = [
-    'modernize-use-nullptr',
-    'google-build-namespaces',
-    'google-build-explicit-make-pair',
-]
 
 extra_args = [
     '-x',
@@ -46,19 +40,16 @@ clang_tidy = os.environ.get('CLANG_TIDY', 'clang-tidy')
 argp = argparse.ArgumentParser(description='Run clang-tidy against core')
 argp.add_argument('files', nargs='+', help='Files to tidy')
 argp.add_argument('--fix', dest='fix', action='store_true')
-argp.add_argument(
-    '-j',
-    '--jobs',
-    type=int,
-    default=multiprocessing.cpu_count(),
-    help='Number of CPUs to use')
+argp.add_argument('-j',
+                  '--jobs',
+                  type=int,
+                  default=multiprocessing.cpu_count(),
+                  help='Number of CPUs to use')
 argp.set_defaults(fix=False)
 args = argp.parse_args()
 
 cmdline = [
     clang_tidy,
-    '--checks=-*,%s' % ','.join(GRPC_CHECKS),
-    '--warnings-as-errors=%s' % ','.join(GRPC_CHECKS)
 ] + ['--extra-arg-before=%s' % arg for arg in extra_args]
 
 if args.fix:

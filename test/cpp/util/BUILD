@@ -14,7 +14,7 @@
 
 licenses(["notice"])  # Apache v2
 
-load("//bazel:grpc_build_system.bzl", "grpc_cc_library", "grpc_cc_binary", "grpc_cc_test", "grpc_package")
+load("//bazel:grpc_build_system.bzl", "grpc_cc_binary", "grpc_cc_library", "grpc_cc_test", "grpc_package")
 
 grpc_package(
     name = "test/cpp/util",
@@ -75,6 +75,7 @@ grpc_cc_library(
         "test_credentials_provider.h",
     ],
     external_deps = [
+        "gflags",
         "protobuf",
     ],
     deps = [
@@ -93,13 +94,13 @@ grpc_cc_library(
     hdrs = [
         "channel_trace_proto_helper.h",
     ],
-    deps = [
-        "//:grpc++",
-        "//src/proto/grpc/channelz:channelz_proto",
-    ],
     external_deps = [
         "gtest",
         "protobuf",
+    ],
+    deps = [
+        "//:grpc++",
+        "//src/proto/grpc/channelz:channelz_proto",
     ],
 )
 
@@ -112,16 +113,15 @@ grpc_cc_library(
     ],
     deps = [
         "//:grpc++_unsecure",
-        "//test/core/util:grpc_test_util",
+        "//test/core/util:grpc_test_util_unsecure",
     ],
 )
 
 grpc_cc_library(
-    name = "grpc_cli_libs",
+    name = "grpc_cli_utils",
     srcs = [
         "cli_call.cc",
         "cli_credentials.cc",
-        "grpc_tool.cc",
         "proto_file_parser.cc",
         "service_describer.cc",
     ],
@@ -129,7 +129,6 @@ grpc_cc_library(
         "cli_call.h",
         "cli_credentials.h",
         "config_grpc_cli.h",
-        "grpc_tool.h",
         "proto_file_parser.h",
         "service_describer.h",
     ],
@@ -142,6 +141,22 @@ grpc_cc_library(
         ":grpc++_proto_reflection_desc_db",
         "//:grpc++",
         "//src/proto/grpc/reflection/v1alpha:reflection_proto",
+    ],
+)
+
+grpc_cc_library(
+    name = "grpc_cli_libs",
+    srcs = [
+        "grpc_tool.cc",
+    ],
+    hdrs = [
+        "grpc_tool.h",
+    ],
+    external_deps = [
+        "gflags",
+    ],
+    deps = [
+        ":grpc_cli_utils",
     ],
 )
 
@@ -165,11 +180,20 @@ grpc_cc_test(
         "grpc_tool_test.cc",
     ],
     data = [
+        "//src/core/tsi/test_creds:ca.pem",
+        "//src/core/tsi/test_creds:server1.key",
+        "//src/core/tsi/test_creds:server1.pem",
         "//src/proto/grpc/testing:echo.proto",
         "//src/proto/grpc/testing:echo_messages.proto",
+        "//src/proto/grpc/testing:simple_messages.proto",
     ],
     external_deps = [
         "gtest",
+    ],
+    tags = [
+        "no_test_ios",
+        "no_windows",
+        "nomsan",  # death tests seem to be incompatible with msan
     ],
     deps = [
         ":grpc_cli_libs",
@@ -177,6 +201,7 @@ grpc_cc_test(
         "//:grpc++_reflection",
         "//src/proto/grpc/testing:echo_messages_proto",
         "//src/proto/grpc/testing:echo_proto",
+        "//src/proto/grpc/testing:simple_messages_proto",
         "//test/core/util:grpc_test_util",
     ],
 )
@@ -189,6 +214,7 @@ grpc_cc_test(
     external_deps = [
         "gtest",
     ],
+    uses_polling = False,
     deps = [
         ":test_util",
     ],
@@ -202,6 +228,7 @@ grpc_cc_test(
     external_deps = [
         "gtest",
     ],
+    uses_polling = False,
     deps = [
         ":test_util",
     ],
@@ -215,8 +242,10 @@ grpc_cc_test(
     external_deps = [
         "gtest",
     ],
+    uses_polling = False,
     deps = [
         "//:grpc++",
+        "//test/core/util:grpc_test_util",
     ],
 )
 
@@ -228,6 +257,7 @@ grpc_cc_test(
     external_deps = [
         "gtest",
     ],
+    uses_polling = False,
     deps = [
         ":test_util",
     ],
@@ -260,33 +290,22 @@ grpc_cc_test(
     deps = [
         "//:grpc++_error_details",
         "//src/proto/grpc/testing:echo_messages_proto",
+        "//test/core/util:grpc_test_util",
     ],
 )
 
 grpc_cc_binary(
     name = "grpc_cli",
     srcs = [
-        "cli_call.cc",
-        "cli_call.h",
-        "cli_credentials.cc",
-        "cli_credentials.h",
-        "config_grpc_cli.h",
         "grpc_cli.cc",
-        "grpc_tool.cc",
-        "grpc_tool.h",
-        "proto_file_parser.cc",
-        "proto_file_parser.h",
-        "proto_reflection_descriptor_database.cc",
-        "proto_reflection_descriptor_database.h",
-        "service_describer.cc",
-        "service_describer.h",
-        "test_config.h",
-        "test_config_cc.cc",
     ],
     external_deps = [
         "gflags",
     ],
     deps = [
+        ":grpc++_proto_reflection_desc_db",
+        ":grpc_cli_libs",
+        ":test_config",
         "//:grpc++",
         "//src/proto/grpc/reflection/v1alpha:reflection_proto",
     ],

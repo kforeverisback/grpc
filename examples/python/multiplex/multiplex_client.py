@@ -17,6 +17,7 @@ from __future__ import print_function
 
 import random
 import time
+import logging
 
 import grpc
 
@@ -46,9 +47,9 @@ def guide_get_one_feature(route_guide_stub, point):
 
 
 def guide_get_feature(route_guide_stub):
-    guide_get_one_feature(route_guide_stub,
-                          route_guide_pb2.Point(
-                              latitude=409146138, longitude=-746188906))
+    guide_get_one_feature(
+        route_guide_stub,
+        route_guide_pb2.Point(latitude=409146138, longitude=-746188906))
     guide_get_one_feature(route_guide_stub,
                           route_guide_pb2.Point(latitude=0, longitude=0))
 
@@ -101,26 +102,30 @@ def generate_messages():
 def guide_route_chat(route_guide_stub):
     responses = route_guide_stub.RouteChat(generate_messages())
     for response in responses:
-        print("Received message %s at %s" % (response.message,
-                                             response.location))
+        print("Received message %s at %s" %
+              (response.message, response.location))
 
 
 def run():
-    channel = grpc.insecure_channel('localhost:50051')
-    greeter_stub = helloworld_pb2_grpc.GreeterStub(channel)
-    route_guide_stub = route_guide_pb2_grpc.RouteGuideStub(channel)
-    greeter_response = greeter_stub.SayHello(
-        helloworld_pb2.HelloRequest(name='you'))
-    print("Greeter client received: " + greeter_response.message)
-    print("-------------- GetFeature --------------")
-    guide_get_feature(route_guide_stub)
-    print("-------------- ListFeatures --------------")
-    guide_list_features(route_guide_stub)
-    print("-------------- RecordRoute --------------")
-    guide_record_route(route_guide_stub)
-    print("-------------- RouteChat --------------")
-    guide_route_chat(route_guide_stub)
+    # NOTE(gRPC Python Team): .close() is possible on a channel and should be
+    # used in circumstances in which the with statement does not fit the needs
+    # of the code.
+    with grpc.insecure_channel('localhost:50051') as channel:
+        greeter_stub = helloworld_pb2_grpc.GreeterStub(channel)
+        route_guide_stub = route_guide_pb2_grpc.RouteGuideStub(channel)
+        greeter_response = greeter_stub.SayHello(
+            helloworld_pb2.HelloRequest(name='you'))
+        print("Greeter client received: " + greeter_response.message)
+        print("-------------- GetFeature --------------")
+        guide_get_feature(route_guide_stub)
+        print("-------------- ListFeatures --------------")
+        guide_list_features(route_guide_stub)
+        print("-------------- RecordRoute --------------")
+        guide_record_route(route_guide_stub)
+        print("-------------- RouteChat --------------")
+        guide_route_chat(route_guide_stub)
 
 
 if __name__ == '__main__':
+    logging.basicConfig()
     run()

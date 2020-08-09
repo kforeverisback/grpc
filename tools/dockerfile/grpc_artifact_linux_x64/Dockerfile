@@ -15,11 +15,10 @@
 # Docker file for building gRPC artifacts.
 
 FROM debian:jessie
-
-RUN apt-get update && apt-get install debian-keyring && apt-key update
+RUN sed -i '/deb http:\/\/deb.debian.org\/debian jessie-updates main/d' /etc/apt/sources.list
 
 # Install Git and basic packages.
-RUN apt-get update && apt-key update && apt-get install -y \
+RUN apt-get update && apt-get install -y \
   autoconf \
   autotools-dev \
   build-essential \
@@ -46,41 +45,50 @@ RUN apt-get update && apt-key update && apt-get install -y \
   wget \
   zip && apt-get clean
 
-# Install Node dependencies
-RUN touch .profile
-RUN curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.25.4/install.sh | bash
-RUN /bin/bash -l -c "nvm install 8 && npm install -g node-pre-gyp"
-
 
 ##################
 # Ruby dependencies
 
 # Install rvm
-RUN gpg --keyserver hkp://keys.gnupg.net --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3
+RUN apt-get update && apt-get install -y gnupg2
+RUN gpg --keyserver hkp://pool.sks-keyservers.net --recv-keys 409B6B1796C275462A1703113804BB82D39DC0E3 7D2BAF1CF37B13E2069D6956105BD0E739499BDB
 RUN \curl -sSL https://get.rvm.io | bash -s stable
 
 # Install Ruby 2.1
 RUN /bin/bash -l -c "rvm install ruby-2.1"
 RUN /bin/bash -l -c "rvm use --default ruby-2.1"
-RUN /bin/bash -l -c "echo 'gem: --no-ri --no-rdoc' > ~/.gemrc"
+RUN /bin/bash -l -c "echo 'gem: --no-document' > ~/.gemrc"
 RUN /bin/bash -l -c "echo 'export PATH=/usr/local/rvm/bin:$PATH' >> ~/.bashrc"
 RUN /bin/bash -l -c "echo 'rvm --default use ruby-2.1' >> ~/.bashrc"
-RUN /bin/bash -l -c "gem install bundler --no-ri --no-rdoc"
+RUN /bin/bash -l -c "gem install bundler -v 1.17.3 --no-document"
 
 
 ##################
 # PHP dependencies
 
 RUN apt-get update && apt-get install -y \
-    php5 php5-dev php-pear phpunit
+    php5 php5-dev php-pear && apt-get clean
+
+RUN wget https://phar.phpunit.de/phpunit-5.7.27.phar && \
+  mv phpunit-5.7.27.phar /usr/local/bin/phpunit && \
+  chmod +x /usr/local/bin/phpunit
 
 ##################
-# Install cross compiler for ARM
+# C# dependencies (needed to build grpc_csharp_ext)
 
-RUN echo 'deb http://emdebian.org/tools/debian/ jessie main' | tee -a /etc/apt/sources.list.d/crosstools.list && \
-  curl http://emdebian.org/tools/debian/emdebian-toolchain-archive.key | apt-key add -
+# Use cmake 3.6 from jessie-backports
+RUN echo "deb http://archive.debian.org/debian jessie-backports main" | tee /etc/apt/sources.list.d/jessie-backports.list
+RUN echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf
+RUN sed -i '/deb http:\/\/deb.debian.org\/debian jessie-updates main/d' /etc/apt/sources.list
+RUN apt-get update && apt-get install -t jessie-backports -y cmake && apt-get clean
 
-RUN dpkg --add-architecture armhf && apt-get update && apt-get install -y crossbuild-essential-armhf
+
+##################
+# Python AuditWheel dependencies (needed to check manylinux1 compatibility)
+
+RUN apt-get install -y python3 python3-pip
+RUN pip3 install auditwheel==2.1.1
+
 
 RUN mkdir /var/local/jenkins
 

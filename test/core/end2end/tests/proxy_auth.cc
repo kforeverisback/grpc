@@ -90,7 +90,7 @@ static void end_test(grpc_end2end_test_fixture* f) {
   grpc_completion_queue_destroy(f->shutdown_cq);
 }
 
-static void simple_request_body(grpc_end2end_test_config config,
+static void simple_request_body(grpc_end2end_test_config /*config*/,
                                 grpc_end2end_test_fixture f) {
   grpc_call* c;
   grpc_call* s;
@@ -108,11 +108,9 @@ static void simple_request_body(grpc_end2end_test_config config,
   char* peer;
 
   gpr_timespec deadline = five_seconds_from_now();
-  c = grpc_channel_create_call(
-      f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
-      grpc_slice_from_static_string("/foo"),
-      get_host_override_slice("foo.test.google.fr:1234", config), deadline,
-      nullptr);
+  c = grpc_channel_create_call(f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
+                               grpc_slice_from_static_string("/foo"), nullptr,
+                               deadline, nullptr);
   GPR_ASSERT(c);
 
   peer = grpc_call_get_peer(c);
@@ -199,10 +197,8 @@ static void simple_request_body(grpc_end2end_test_config config,
   GPR_ASSERT(status == GRPC_STATUS_UNIMPLEMENTED);
   GPR_ASSERT(0 == grpc_slice_str_cmp(details, "xyz"));
   GPR_ASSERT(0 == grpc_slice_str_cmp(call_details.method, "/foo"));
-  validate_host_override_string("foo.test.google.fr:1234", call_details.host,
-                                config);
   GPR_ASSERT(0 == call_details.flags);
-  GPR_ASSERT(was_cancelled == 1);
+  GPR_ASSERT(was_cancelled == 0);
 
   grpc_slice_unref(details);
   grpc_metadata_array_destroy(&initial_metadata_recv);

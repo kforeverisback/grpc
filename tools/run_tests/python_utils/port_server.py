@@ -14,25 +14,27 @@
 # limitations under the License.
 """Manage TCP ports for unit tests; started by run_tests.py"""
 
+from __future__ import print_function
+
 import argparse
-from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
+from six.moves.BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
+from six.moves.socketserver import ThreadingMixIn
 import hashlib
 import os
 import socket
 import sys
 import time
 import random
-from SocketServer import ThreadingMixIn
 import threading
 import platform
 
 # increment this number whenever making a change to ensure that
 # the changes are picked up by running CI servers
 # note that all changes must be backwards compatible
-_MY_VERSION = 20
+_MY_VERSION = 21
 
 if len(sys.argv) == 2 and sys.argv[1] == 'dump_version':
-    print _MY_VERSION
+    print(_MY_VERSION)
     sys.exit(0)
 
 argp = argparse.ArgumentParser(description='Server for httpcli_test')
@@ -47,7 +49,7 @@ if args.logfile is not None:
     sys.stderr = open(args.logfile, 'w')
     sys.stdout = sys.stderr
 
-print 'port server running on port %d' % args.port
+print('port server running on port %d' % args.port)
 
 pool = []
 in_use = {}
@@ -74,7 +76,7 @@ def can_connect(port):
     try:
         s.connect(('localhost', port))
         return True
-    except socket.error, e:
+    except socket.error as e:
         return False
     finally:
         s.close()
@@ -86,7 +88,7 @@ def can_bind(port, proto):
     try:
         s.bind(('localhost', port))
         return True
-    except socket.error, e:
+    except socket.error as e:
         return False
     finally:
         s.close()
@@ -95,7 +97,7 @@ def can_bind(port, proto):
 def refill_pool(max_timeout, req):
     """Scan for ports not marked for being in use"""
     chk = [
-        port for port in list(range(1025, 32766))
+        port for port in range(1025, 32766)
         if port not in cronet_restricted_ports
     ]
     random.shuffle(chk)
@@ -155,7 +157,7 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             p = allocate_port(self)
             self.log_message('allocated port %d' % p)
-            self.wfile.write('%d' % p)
+            self.wfile.write(bytes('%d' % p))
         elif self.path[0:6] == '/drop/':
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain')
@@ -175,7 +177,7 @@ class Handler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-Type', 'text/plain')
             self.end_headers()
-            self.wfile.write(_MY_VERSION)
+            self.wfile.write(bytes('%d' % _MY_VERSION))
         elif self.path == '/dump':
             # yaml module is not installed on Macs and Windows machines by default
             # so we import it lazily (/dump action is only used for debugging)
@@ -186,13 +188,11 @@ class Handler(BaseHTTPRequestHandler):
             mu.acquire()
             now = time.time()
             out = yaml.dump({
-                'pool':
-                pool,
-                'in_use':
-                dict((k, now - v) for k, v in in_use.items())
+                'pool': pool,
+                'in_use': dict((k, now - v) for k, v in in_use.items())
             })
             mu.release()
-            self.wfile.write(out)
+            self.wfile.write(bytes(out))
         elif self.path == '/quitquitquit':
             self.send_response(200)
             self.end_headers()

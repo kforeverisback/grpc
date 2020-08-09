@@ -99,18 +99,24 @@ DEFINE_bool(do_not_abort_on_transient_failures, true,
 
 // Options from client.cc (for compatibility with interop test).
 // TODO(sreek): Consolidate overlapping options
+DEFINE_bool(use_alts, false,
+            "Whether to use alts. Enable alts will disable tls.");
 DEFINE_bool(use_tls, false, "Whether to use tls.");
 DEFINE_bool(use_test_ca, false, "False to use SSL roots for google");
-DEFINE_string(server_host_override, "foo.test.google.fr",
+DEFINE_string(server_host_override, "",
               "Override the server host which is sent in HTTP header");
 
+using grpc::testing::ALTS;
+using grpc::testing::INSECURE;
+using grpc::testing::kTestCaseList;
 using grpc::testing::MetricsService;
 using grpc::testing::MetricsServiceImpl;
 using grpc::testing::StressTestInteropClient;
 using grpc::testing::TestCaseType;
+using grpc::testing::TLS;
+using grpc::testing::transport_security;
 using grpc::testing::UNKNOWN_TEST;
 using grpc::testing::WeightedRandomTestSelector;
-using grpc::testing::kTestCaseList;
 
 static int log_level = GPR_LOG_SEVERITY_DEBUG;
 
@@ -122,7 +128,7 @@ void TestLogFunction(gpr_log_func_args* args) {
   }
 }
 
-TestCaseType GetTestTypeFromName(const grpc::string& test_name) {
+TestCaseType GetTestTypeFromName(const std::string& test_name) {
   TestCaseType test_case = UNKNOWN_TEST;
 
   for (auto it = kTestCaseList.begin(); it != kTestCaseList.end(); it++) {
@@ -136,12 +142,12 @@ TestCaseType GetTestTypeFromName(const grpc::string& test_name) {
 }
 
 // Converts a string of comma delimited tokens to a vector of tokens
-bool ParseCommaDelimitedString(const grpc::string& comma_delimited_str,
-                               std::vector<grpc::string>& tokens) {
+bool ParseCommaDelimitedString(const std::string& comma_delimited_str,
+                               std::vector<std::string>& tokens) {
   size_t bpos = 0;
-  size_t epos = grpc::string::npos;
+  size_t epos = std::string::npos;
 
-  while ((epos = comma_delimited_str.find(',', bpos)) != grpc::string::npos) {
+  while ((epos = comma_delimited_str.find(',', bpos)) != std::string::npos) {
     tokens.emplace_back(comma_delimited_str.substr(bpos, epos - bpos));
     bpos = epos + 1;
   }
@@ -154,23 +160,23 @@ bool ParseCommaDelimitedString(const grpc::string& comma_delimited_str,
 // Output:
 //   - Whether parsing was successful (return value)
 //   - Vector of (test_type_enum, weight) pairs returned via 'tests' parameter
-bool ParseTestCasesString(const grpc::string& test_cases,
+bool ParseTestCasesString(const std::string& test_cases,
                           std::vector<std::pair<TestCaseType, int>>& tests) {
   bool is_success = true;
 
-  std::vector<grpc::string> tokens;
+  std::vector<std::string> tokens;
   ParseCommaDelimitedString(test_cases, tokens);
 
   for (auto it = tokens.begin(); it != tokens.end(); it++) {
     // Token is in the form <test_name>:<test_weight>
     size_t colon_pos = it->find(':');
-    if (colon_pos == grpc::string::npos) {
+    if (colon_pos == std::string::npos) {
       gpr_log(GPR_ERROR, "Error in parsing test case string: %s", it->c_str());
       is_success = false;
       break;
     }
 
-    grpc::string test_name = it->substr(0, colon_pos);
+    std::string test_name = it->substr(0, colon_pos);
     int weight = std::stoi(it->substr(colon_pos + 1));
     TestCaseType test_case = GetTestTypeFromName(test_name);
     if (test_case == UNKNOWN_TEST) {
@@ -186,7 +192,7 @@ bool ParseTestCasesString(const grpc::string& test_cases,
 }
 
 // For debugging purposes
-void LogParameterInfo(const std::vector<grpc::string>& addresses,
+void LogParameterInfo(const std::vector<std::string>& addresses,
                       const std::vector<std::pair<TestCaseType, int>>& tests) {
   gpr_log(GPR_INFO, "server_addresses: %s", FLAGS_server_addresses.c_str());
   gpr_log(GPR_INFO, "test_cases : %s", FLAGS_test_cases.c_str());
@@ -231,7 +237,7 @@ int main(int argc, char** argv) {
   srand(time(nullptr));
 
   // Parse the server addresses
-  std::vector<grpc::string> server_addresses;
+  std::vector<std::string> server_addresses;
   ParseCommaDelimitedString(FLAGS_server_addresses, server_addresses);
 
   // Parse test cases and weights
@@ -268,6 +274,8 @@ int main(int argc, char** argv) {
   int thread_idx = 0;
   int server_idx = -1;
   char buffer[256];
+  transport_security security_type =
+      FLAGS_use_alts ? ALTS : (FLAGS_use_tls ? TLS : INSECURE);
   for (auto it = server_addresses.begin(); it != server_addresses.end(); it++) {
     ++server_idx;
     // Create channel(s) for each server
@@ -275,15 +283,20 @@ int main(int argc, char** argv) {
          channel_idx++) {
       gpr_log(GPR_INFO, "Starting test with %s channel_idx=%d..", it->c_str(),
               channel_idx);
-      std::shared_ptr<grpc::Channel> channel = grpc::CreateTestChannel(
-          *it, FLAGS_server_host_override, FLAGS_use_tls, !FLAGS_use_test_ca);
+      grpc::testing::ChannelCreationFunc channel_creation_func = std::bind(
+          static_cast<std::shared_ptr<grpc::Channel> (*)(
+              const std::string&, const std::string&,
+              grpc::testing::transport_security, bool)>(
+              grpc::CreateTestChannel),
+          *it, FLAGS_server_host_override, security_type, !FLAGS_use_test_ca);
 
       // Create stub(s) for each channel
       for (int stub_idx = 0; stub_idx < FLAGS_num_stubs_per_channel;
            stub_idx++) {
         clients.emplace_back(new StressTestInteropClient(
-            ++thread_idx, *it, channel, test_selector, FLAGS_test_duration_secs,
-            FLAGS_sleep_duration_ms, FLAGS_do_not_abort_on_transient_failures));
+            ++thread_idx, *it, channel_creation_func, test_selector,
+            FLAGS_test_duration_secs, FLAGS_sleep_duration_ms,
+            FLAGS_do_not_abort_on_transient_failures));
 
         bool is_already_created = false;
         // QpsGauge name

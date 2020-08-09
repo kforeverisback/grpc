@@ -21,10 +21,13 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <string>
+
+#include "absl/strings/str_format.h"
+
 #include <grpc/byte_buffer.h>
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
-#include <grpc/support/string_util.h>
 #include <grpc/support/time.h>
 
 #include "src/core/lib/gpr/useful.h"
@@ -90,10 +93,9 @@ static grpc_slice large_slice(void) {
 
 static void test_invoke_large_request(grpc_end2end_test_config config,
                                       int max_frame_size, int lookahead_bytes) {
-  char* name;
-  gpr_asprintf(&name,
-               "test_invoke_large_request:max_frame_size=%d:lookahead_bytes=%d",
-               max_frame_size, lookahead_bytes);
+  std::string name = absl::StrFormat(
+      "test_invoke_large_request:max_frame_size=%d:lookahead_bytes=%d",
+      max_frame_size, lookahead_bytes);
 
   grpc_arg args[2];
   args[0].type = GRPC_ARG_INTEGER;
@@ -105,8 +107,7 @@ static void test_invoke_large_request(grpc_end2end_test_config config,
   grpc_channel_args channel_args = {GPR_ARRAY_SIZE(args), args};
 
   grpc_end2end_test_fixture f =
-      begin_test(config, name, &channel_args, &channel_args);
-  gpr_free(name);
+      begin_test(config, name.c_str(), &channel_args, &channel_args);
 
   grpc_slice request_payload_slice = large_slice();
   grpc_slice response_payload_slice = large_slice();
@@ -131,11 +132,9 @@ static void test_invoke_large_request(grpc_end2end_test_config config,
   int was_cancelled = 2;
 
   gpr_timespec deadline = n_seconds_from_now(30);
-  c = grpc_channel_create_call(
-      f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
-      grpc_slice_from_static_string("/foo"),
-      get_host_override_slice("foo.test.google.fr:1234", config), deadline,
-      nullptr);
+  c = grpc_channel_create_call(f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
+                               grpc_slice_from_static_string("/foo"), nullptr,
+                               deadline, nullptr);
   GPR_ASSERT(c);
 
   grpc_metadata_array_init(&initial_metadata_recv);
@@ -237,9 +236,7 @@ static void test_invoke_large_request(grpc_end2end_test_config config,
   GPR_ASSERT(status == GRPC_STATUS_UNIMPLEMENTED);
   GPR_ASSERT(0 == grpc_slice_str_cmp(details, "xyz"));
   GPR_ASSERT(0 == grpc_slice_str_cmp(call_details.method, "/foo"));
-  validate_host_override_string("foo.test.google.fr:1234", call_details.host,
-                                config);
-  GPR_ASSERT(was_cancelled == 1);
+  GPR_ASSERT(was_cancelled == 0);
 
   grpc_slice_unref(details);
   grpc_metadata_array_destroy(&initial_metadata_recv);

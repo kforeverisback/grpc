@@ -88,7 +88,6 @@ TEST(SslSessionCacheTest, InitialState) {
   // Verify session initial state.
   {
     tsi::SslSessionPtr tmp_sess = tracker.NewSession(1);
-    EXPECT_EQ(tmp_sess->references, 1);
     EXPECT_TRUE(tracker.IsAlive(1));
     EXPECT_EQ(tracker.AliveCount(), 1);
   }
@@ -146,7 +145,7 @@ TEST(SslSessionCacheTest, LruCache) {
 
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
-  grpc_test_init(argc, argv);
+  grpc::testing::TestEnvironment env(argc, argv);
   grpc_init();
   int ret = RUN_ALL_TESTS();
   grpc_shutdown();

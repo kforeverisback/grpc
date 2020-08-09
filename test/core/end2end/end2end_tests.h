@@ -34,6 +34,8 @@ typedef struct grpc_end2end_test_config grpc_end2end_test_config;
 #define FEATURE_MASK_DOES_NOT_SUPPORT_RESOURCE_QUOTA_SERVER 64
 #define FEATURE_MASK_DOES_NOT_SUPPORT_NETWORK_STATUS_CHANGE 128
 #define FEATURE_MASK_SUPPORTS_WORKAROUNDS 256
+#define FEATURE_MASK_DOES_NOT_SUPPORT_SEND_CALL_CREDENTIALS 512
+#define FEATURE_MASK_DOES_NOT_SUPPORT_CLIENT_HANDSHAKE_COMPLETE_FIRST 1024
 
 #define FAIL_AUTH_CHECK_SERVER_ARG_NAME "fail_auth_check"
 
@@ -51,6 +53,11 @@ struct grpc_end2end_test_config {
 
   /* Which features are supported by this fixture. See feature flags above. */
   uint32_t feature_mask;
+
+  /* If the call host is setup by the fixture (for example, via the
+   * GRPC_SSL_TARGET_NAME_OVERRIDE_ARG channel arg), which value should the test
+   * expect to find in call_details.host */
+  const char* overridden_call_host;
 
   grpc_end2end_test_fixture (*create_fixture)(grpc_channel_args* client_args,
                                               grpc_channel_args* server_args);

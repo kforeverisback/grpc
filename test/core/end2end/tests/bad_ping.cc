@@ -108,11 +108,9 @@ static void test_bad_ping(grpc_end2end_test_config config) {
   grpc_slice details;
   int was_cancelled = 2;
 
-  c = grpc_channel_create_call(
-      f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
-      grpc_slice_from_static_string("/foo"),
-      get_host_override_slice("foo.test.google.fr:1234", config), deadline,
-      nullptr);
+  c = grpc_channel_create_call(f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
+                               grpc_slice_from_static_string("/foo"), nullptr,
+                               deadline, nullptr);
   GPR_ASSERT(c);
 
   grpc_metadata_array_init(&initial_metadata_recv);
@@ -207,8 +205,6 @@ static void test_bad_ping(grpc_end2end_test_config config) {
   // the in-progress RPC should fail.
   GPR_ASSERT(status == GRPC_STATUS_UNAVAILABLE);
   GPR_ASSERT(0 == grpc_slice_str_cmp(call_details.method, "/foo"));
-  validate_host_override_string("foo.test.google.fr:1234", call_details.host,
-                                config);
   GPR_ASSERT(was_cancelled == 1);
 
   grpc_slice_unref(details);
@@ -271,11 +267,9 @@ static void test_pings_without_data(grpc_end2end_test_config config) {
   grpc_slice details;
   int was_cancelled = 2;
 
-  c = grpc_channel_create_call(
-      f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
-      grpc_slice_from_static_string("/foo"),
-      get_host_override_slice("foo.test.google.fr:1234", config), deadline,
-      nullptr);
+  c = grpc_channel_create_call(f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
+                               grpc_slice_from_static_string("/foo"), nullptr,
+                               deadline, nullptr);
   GPR_ASSERT(c);
 
   grpc_metadata_array_init(&initial_metadata_recv);
@@ -318,7 +312,7 @@ static void test_pings_without_data(grpc_end2end_test_config config) {
   CQ_EXPECT_COMPLETION(cqv, tag(101), 1);
   cq_verify(cqv);
 
-  // Send too many pings to the server similar to the prevous test case.
+  // Send too many pings to the server similar to the previous test case.
   // However, since we set the MAX_PINGS_WITHOUT_DATA at the client side, only
   // MAX_PING_STRIKES will actually be sent and the rpc will still succeed.
   int i;
@@ -361,6 +355,11 @@ static void test_pings_without_data(grpc_end2end_test_config config) {
 
   grpc_server_shutdown_and_notify(f.server, f.cq, tag(0xdead));
   CQ_EXPECT_COMPLETION(cqv, tag(0xdead), 1);
+
+  // Also expect the previously blocked pings to complete with an error
+  CQ_EXPECT_COMPLETION(cqv, tag(200 + MAX_PING_STRIKES + 1), 0);
+  CQ_EXPECT_COMPLETION(cqv, tag(200 + MAX_PING_STRIKES + 2), 0);
+
   cq_verify(cqv);
 
   grpc_call_unref(s);
@@ -368,8 +367,6 @@ static void test_pings_without_data(grpc_end2end_test_config config) {
   // The rpc should be successful.
   GPR_ASSERT(status == GRPC_STATUS_UNIMPLEMENTED);
   GPR_ASSERT(0 == grpc_slice_str_cmp(call_details.method, "/foo"));
-  validate_host_override_string("foo.test.google.fr:1234", call_details.host,
-                                config);
 
   grpc_slice_unref(details);
   grpc_metadata_array_destroy(&initial_metadata_recv);

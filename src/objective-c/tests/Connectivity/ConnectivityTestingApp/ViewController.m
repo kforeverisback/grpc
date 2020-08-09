@@ -20,11 +20,9 @@
 
 #import <GRPCClient/GRPCCall.h>
 #import <ProtoRPC/ProtoMethod.h>
+#import <RxLibrary/GRXBufferedPipe.h>
 #import <RxLibrary/GRXWriter+Immediate.h>
 #import <RxLibrary/GRXWriter+Transformations.h>
-#import <RxLibrary/GRXBufferedPipe.h>
-
-#import "src/objective-c/GRPCClient/private/GRPCConnectivityMonitor.h"
 
 NSString *host = @"grpc-test.sandbox.googleapis.com";
 
@@ -34,9 +32,6 @@ NSString *host = @"grpc-test.sandbox.googleapis.com";
 @implementation ViewController
 - (void)viewDidLoad {
   [super viewDidLoad];
-
-  [GRPCConnectivityMonitor registerObserver:self
-                                   selector:@selector(reachabilityChanged:)];
 }
 
 - (void)reachabilityChanged:(NSNotification *)note {
@@ -53,22 +48,22 @@ NSString *host = @"grpc-test.sandbox.googleapis.com";
                                                              service:@"TestService"
                                                               method:@"UnaryCall"];
   GRXWriter *loggingRequestWriter =
-      [[GRXWriter writerWithValue:[NSData dataWithBytes:bytes length:sizeof(bytes)]]
-                              map:^id(id value) {
-                                NSLog(@"Sending request.");
-                                return value;
-                              }];
+      [[GRXWriter writerWithValue:[NSData dataWithBytes:bytes
+                                                 length:sizeof(bytes)]] map:^id(id value) {
+        NSLog(@"Sending request.");
+        return value;
+      }];
   GRPCCall *call = [[GRPCCall alloc] initWithHost:host
                                              path:method.HTTPPath
                                    requestsWriter:loggingRequestWriter];
 
-  [call startWithWriteable:[GRXWriteable writeableWithEventHandler:^(BOOL done, id value,
-                                                                       NSError *error) {
-    if (!done) {
-      return;
-    }
-    NSLog(@"Unary call finished with error: %@", error);
-  }]];
+  [call startWithWriteable:[GRXWriteable
+                               writeableWithEventHandler:^(BOOL done, id value, NSError *error) {
+                                 if (!done) {
+                                   return;
+                                 }
+                                 NSLog(@"Unary call finished with error: %@", error);
+                               }]];
 }
 
 - (IBAction)tapStreaming:(id)sender {
@@ -89,13 +84,13 @@ NSString *host = @"grpc-test.sandbox.googleapis.com";
                                              path:method.HTTPPath
                                    requestsWriter:requestsBuffer];
 
-  [call startWithWriteable:[GRXWriteable writeableWithEventHandler:^(BOOL done, id value,
-                                                                     NSError *error) {
-    if (!done) {
-      return;
-    }
-    NSLog(@"Streaming call finished with error: %@", error);
-  }]];
+  [call startWithWriteable:[GRXWriteable
+                               writeableWithEventHandler:^(BOOL done, id value, NSError *error) {
+                                 if (!done) {
+                                   return;
+                                 }
+                                 NSLog(@"Streaming call finished with error: %@", error);
+                               }]];
 }
 
 @end

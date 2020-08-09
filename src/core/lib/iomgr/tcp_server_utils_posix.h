@@ -82,16 +82,18 @@ struct grpc_tcp_server {
   /* shutdown callback */
   grpc_closure* shutdown_complete;
 
-  /* all pollsets interested in new connections */
-  grpc_pollset** pollsets;
-  /* number of pollsets in the pollsets array */
-  size_t pollset_count;
+  /* all pollsets interested in new connections. The object pointed at is not
+   * owned by this struct */
+  const std::vector<grpc_pollset*>* pollsets;
 
   /* next pollset to assign a channel to */
   gpr_atm next_pollset_to_assign;
 
   /* channel args for this server */
   grpc_channel_args* channel_args;
+
+  /* a handler for external connections, owned */
+  grpc_core::TcpServerFdHandler* fd_handler;
 };
 
 /* If successful, add a listener to \a s for \a addr, set \a dsmode for the
@@ -113,7 +115,7 @@ grpc_error* grpc_tcp_server_add_all_local_addrs(grpc_tcp_server* s,
                                                 int* out_port);
 
 /* Prepare a recently-created socket for listening. */
-grpc_error* grpc_tcp_server_prepare_socket(int fd,
+grpc_error* grpc_tcp_server_prepare_socket(grpc_tcp_server*, int fd,
                                            const grpc_resolved_address* addr,
                                            bool so_reuseport, int* port);
 /* Ruturn true if the platform supports ifaddrs */

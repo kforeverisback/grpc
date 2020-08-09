@@ -17,7 +17,7 @@ import argparse
 import time
 
 import grpc
-from src.proto.grpc.testing import services_pb2_grpc
+from src.proto.grpc.testing import worker_service_pb2_grpc
 
 from tests.qps import worker_server
 from tests.unit import test_common
@@ -26,7 +26,8 @@ from tests.unit import test_common
 def run_worker_server(port):
     server = test_common.test_server()
     servicer = worker_server.WorkerServer()
-    services_pb2_grpc.add_WorkerServiceServicer_to_server(servicer, server)
+    worker_service_pb2_grpc.add_WorkerServiceServicer_to_server(
+        servicer, server)
     server.add_insecure_port('[::]:{}'.format(port))
     server.start()
     servicer.wait_for_quit()
@@ -36,11 +37,10 @@ def run_worker_server(port):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='gRPC Python performance testing worker')
-    parser.add_argument(
-        '--driver_port',
-        type=int,
-        dest='port',
-        help='The port the worker should listen on')
+    parser.add_argument('--driver_port',
+                        type=int,
+                        dest='port',
+                        help='The port the worker should listen on')
     args = parser.parse_args()
 
     run_worker_server(args.port)

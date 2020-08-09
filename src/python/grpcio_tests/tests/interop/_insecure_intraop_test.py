@@ -19,7 +19,7 @@ import grpc
 from src.proto.grpc.testing import test_pb2_grpc
 
 from tests.interop import _intraop_test_case
-from tests.interop import methods
+from tests.interop import service
 from tests.interop import server
 from tests.unit import test_common
 
@@ -29,12 +29,15 @@ class InsecureIntraopTest(_intraop_test_case.IntraopTestCase,
 
     def setUp(self):
         self.server = test_common.test_server()
-        test_pb2_grpc.add_TestServiceServicer_to_server(methods.TestService(),
+        test_pb2_grpc.add_TestServiceServicer_to_server(service.TestService(),
                                                         self.server)
         port = self.server.add_insecure_port('[::]:0')
         self.server.start()
         self.stub = test_pb2_grpc.TestServiceStub(
             grpc.insecure_channel('localhost:{}'.format(port)))
+
+    def tearDown(self):
+        self.server.stop(None)
 
 
 if __name__ == '__main__':

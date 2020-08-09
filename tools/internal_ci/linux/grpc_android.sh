@@ -18,18 +18,39 @@ set -ex
 # change to grpc repo root
 cd $(dirname $0)/../../..
 
+REPO_ROOT="$(pwd)"
+
 git submodule update --init
 
 # Build protoc and grpc_cpp_plugin. Codegen is not cross-compiled to Android
 make HAS_SYSTEM_PROTOBUF=false
 
-# TODO(ericgribkoff) Remove when this commit (already in master) is included in
-# next protobuf release
-cd third_party/protobuf
-git fetch
-git cherry-pick 7daa320065f3bea2b54bf983337d1724f153422d -m 1
+# Build and run interop instrumentation tests on Firebase Test Lab
 
-cd ../../examples/android/helloworld
+cd "${REPO_ROOT}/src/android/test/interop/"
+./gradlew assembleDebug \
+    "-Pprotoc=${REPO_ROOT}/third_party/protobuf/src/protoc" \
+    "-Pgrpc_cpp_plugin=${REPO_ROOT}/bins/opt/grpc_cpp_plugin"
+./gradlew assembleDebugAndroidTest \
+    "-Pprotoc=${REPO_ROOT}/third_party/protobuf/src/protoc" \
+    "-Pgrpc_cpp_plugin=${REPO_ROOT}/bins/opt/grpc_cpp_plugin"
+gcloud firebase test android run \
+    --type instrumentation \
+    --app app/build/outputs/apk/debug/app-debug.apk \
+    --test app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk \
+    --device model=Nexus6P,version=27,locale=en,orientation=portrait \
+    --device model=Nexus6P,version=26,locale=en,orientation=portrait \
+    --device model=Nexus6P,version=25,locale=en,orientation=portrait \
+    --device model=Nexus6P,version=24,locale=en,orientation=portrait \
+    --device model=Nexus6P,version=23,locale=en,orientation=portrait \
+    --device model=Nexus6,version=22,locale=en,orientation=portrait \
+    --device model=Nexus6,version=21,locale=en,orientation=portrait \
+    --device model=walleye,version=28,locale=en,orientation=portrait
+
+
+# Build hello world example
+
+cd "${REPO_ROOT}/examples/android/helloworld"
 ./gradlew build \
-    -Dprotoc=../../../third_party/protobuf/src/protoc \
-    -Dgrpc_cpp_plugin=../../../bins/opt/grpc_cpp_plugin
+    "-Pprotoc=${REPO_ROOT}/third_party/protobuf/src/protoc" \
+    "-Pgrpc_cpp_plugin=${REPO_ROOT}/bins/opt/grpc_cpp_plugin"

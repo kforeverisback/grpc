@@ -12,13 +12,6 @@
 @rem See the License for the specific language governing permissions and
 @rem limitations under the License.
 
-@rem Move python installation from _32bit to _32bits where they are expected by python artifact builder
-@rem TODO(jtattermusch): get rid of this hack
-rename C:\Python27_32bit Python27_32bits
-rename C:\Python34_32bit Python34_32bits
-rename C:\Python35_32bit Python35_32bits
-rename C:\Python36_32bit Python36_32bits
-
 @rem enter repo root
 cd /d %~dp0\..\..\..
 
@@ -28,8 +21,9 @@ call tools/internal_ci/helper_scripts/prepare_build_windows.bat
 powershell -Command "mv %KOKORO_GFILE_DIR%\github\grpc\artifacts input_artifacts"
 dir input_artifacts
 
-python tools/run_tests/task_runner.py -f package windows -j 4 || goto :error
-goto :EOF
+python tools/run_tests/task_runner.py -f package windows -j 4
+set RUNTESTS_EXITCODE=%errorlevel%
 
-:error
-exit /b %errorlevel%
+bash tools/internal_ci/helper_scripts/delete_nonartifacts.sh
+
+exit /b %RUNTESTS_EXITCODE%

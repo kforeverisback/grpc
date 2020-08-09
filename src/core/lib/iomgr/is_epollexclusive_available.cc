@@ -27,6 +27,7 @@
 #include <grpc/support/log.h>
 
 #include <errno.h>
+#include <sys/epoll.h>
 #include <sys/eventfd.h>
 #include <unistd.h>
 
@@ -86,6 +87,20 @@ bool grpc_is_epollexclusive_available(void) {
               "epoll_ctl with EPOLLEXCLUSIVE | EPOLLONESHOT succeeded. This is "
               "evidence of no EPOLLEXCLUSIVE support. Not using "
               "epollex polling engine.");
+      logged_why_not = true;
+    }
+    close(fd);
+    close(evfd);
+    return false;
+  }
+  // Check that EPOLLEXCLUSIVE is supported at all.
+  ev.events = static_cast<uint32_t>(EPOLLET | EPOLLIN | EPOLLEXCLUSIVE);
+  if (epoll_ctl(fd, EPOLL_CTL_ADD, evfd, &ev) != 0) {
+    if (!logged_why_not) {
+      gpr_log(GPR_DEBUG,
+              "epoll_ctl with EPOLLEXCLUSIVE failed with error: "
+              "%d. Not using epollex polling engine.",
+              errno);
       logged_why_not = true;
     }
     close(fd);

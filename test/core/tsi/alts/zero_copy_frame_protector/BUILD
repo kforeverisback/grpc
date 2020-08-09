@@ -1,5 +1,5 @@
 # Copyright 2018 gRPC authors.
-# 
+#
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
@@ -16,7 +16,7 @@ load("//bazel:grpc_build_system.bzl", "grpc_cc_test", "grpc_package")
 
 licenses(["notice"])  # Apache v2
 
-grpc_package(name = "zero_copy_frame_protector")
+grpc_package(name = "test/core/tsi/alts/zero_copy_frame_protector")
 
 grpc_cc_test(
     name = "alts_grpc_record_protocol_test",
@@ -28,6 +28,7 @@ grpc_cc_test(
         "//:grpc",
         "//:grpc_base_c",
         "//test/core/tsi/alts/crypt:alts_crypt_test_util",
+        "//test/core/util:grpc_test_util",
     ],
 )
 
@@ -40,6 +41,7 @@ grpc_cc_test(
         "//:gpr",
         "//:grpc",
         "//test/core/tsi/alts/crypt:alts_crypt_test_util",
+        "//test/core/util:grpc_test_util",
     ],
 )
 
@@ -53,5 +55,6 @@ grpc_cc_test(
         "//:grpc",
         "//:grpc_base_c",
         "//test/core/tsi/alts/crypt:alts_crypt_test_util",
+        "//test/core/util:grpc_test_util",
     ],
 )

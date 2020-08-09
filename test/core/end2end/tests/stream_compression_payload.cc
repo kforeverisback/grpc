@@ -27,6 +27,7 @@
 #include <grpc/support/log.h>
 #include <grpc/support/time.h>
 #include "src/core/lib/channel/channel_args.h"
+#include "src/core/lib/compression/compression_args.h"
 #include "src/core/lib/surface/call.h"
 #include "test/core/end2end/cq_verifier.h"
 
@@ -103,7 +104,7 @@ static grpc_slice generate_random_slice() {
   return out;
 }
 
-static void request_response_with_payload(grpc_end2end_test_config config,
+static void request_response_with_payload(grpc_end2end_test_config /*config*/,
                                           grpc_end2end_test_fixture f) {
   /* Create large request and response bodies. These are big enough to require
    * multiple round trips to deliver to the peer, and their exact contents of
@@ -132,11 +133,9 @@ static void request_response_with_payload(grpc_end2end_test_config config,
   int was_cancelled = 2;
 
   gpr_timespec deadline = n_seconds_from_now(60);
-  c = grpc_channel_create_call(
-      f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
-      grpc_slice_from_static_string("/foo"),
-      get_host_override_slice("foo.test.google.fr:1234", config), deadline,
-      nullptr);
+  c = grpc_channel_create_call(f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
+                               grpc_slice_from_static_string("/foo"), nullptr,
+                               deadline, nullptr);
   GPR_ASSERT(c);
 
   grpc_metadata_array_init(&initial_metadata_recv);
@@ -238,8 +237,6 @@ static void request_response_with_payload(grpc_end2end_test_config config,
   GPR_ASSERT(status == GRPC_STATUS_OK);
   GPR_ASSERT(0 == grpc_slice_str_cmp(details, "xyz"));
   GPR_ASSERT(0 == grpc_slice_str_cmp(call_details.method, "/foo"));
-  validate_host_override_string("foo.test.google.fr:1234", call_details.host,
-                                config);
   GPR_ASSERT(was_cancelled == 0);
   GPR_ASSERT(byte_buffer_eq_slice(request_payload_recv, request_payload_slice));
   GPR_ASSERT(
@@ -266,10 +263,12 @@ static void request_response_with_payload(grpc_end2end_test_config config,
    payload and status. */
 static void test_invoke_request_response_with_payload(
     grpc_end2end_test_config config) {
-  grpc_channel_args* client_args = grpc_channel_args_set_compression_algorithm(
-      nullptr, GRPC_COMPRESS_STREAM_GZIP);
-  grpc_channel_args* server_args = grpc_channel_args_set_compression_algorithm(
-      nullptr, GRPC_COMPRESS_STREAM_GZIP);
+  grpc_channel_args* client_args =
+      grpc_channel_args_set_channel_default_compression_algorithm(
+          nullptr, GRPC_COMPRESS_STREAM_GZIP);
+  grpc_channel_args* server_args =
+      grpc_channel_args_set_channel_default_compression_algorithm(
+          nullptr, GRPC_COMPRESS_STREAM_GZIP);
   grpc_end2end_test_fixture f =
       begin_test(config, "test_invoke_request_response_with_payload",
                  client_args, server_args);

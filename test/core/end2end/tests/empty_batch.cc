@@ -85,7 +85,7 @@ static void end_test(grpc_end2end_test_fixture* f) {
   grpc_completion_queue_destroy(f->shutdown_cq);
 }
 
-static void empty_batch_body(grpc_end2end_test_config config,
+static void empty_batch_body(grpc_end2end_test_config /*config*/,
                              grpc_end2end_test_fixture f) {
   grpc_call* c;
   cq_verifier* cqv = cq_verifier_create(f.cq);
@@ -93,11 +93,9 @@ static void empty_batch_body(grpc_end2end_test_config config,
   grpc_op* op = nullptr;
 
   gpr_timespec deadline = five_seconds_from_now();
-  c = grpc_channel_create_call(
-      f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
-      grpc_slice_from_static_string("/foo"),
-      get_host_override_slice("foo.test.google.fr:1234", config), deadline,
-      nullptr);
+  c = grpc_channel_create_call(f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
+                               grpc_slice_from_static_string("/foo"), nullptr,
+                               deadline, nullptr);
   GPR_ASSERT(c);
 
   error = grpc_call_start_batch(c, op, 0, tag(1), nullptr);

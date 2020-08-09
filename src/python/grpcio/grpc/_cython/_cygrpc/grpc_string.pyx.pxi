@@ -12,10 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import logging
 
-
-# This function will ascii encode unicode string inputs if neccesary.
+# This function will ascii encode unicode string inputs if necessary.
 # In Python3, unicode strings are the default str type.
 cdef bytes str_to_bytes(object s):
   if s is None or isinstance(s, bytes):
@@ -37,7 +35,7 @@ cdef bytes _encode(object string_or_none):
   elif isinstance(string_or_none, (bytes,)):
     return <bytes>string_or_none
   elif isinstance(string_or_none, (unicode,)):
-    return string_or_none.encode('ascii')
+    return string_or_none.encode('utf8')
   else:
     raise TypeError('Expected str, not {}'.format(type(string_or_none)))
 
@@ -49,5 +47,5 @@ cdef str _decode(bytes bytestring):
         try:
             return bytestring.decode('utf8')
         except UnicodeDecodeError:
-            logging.exception('Invalid encoding on %s', bytestring)
+            _LOGGER.exception('Invalid encoding on %s', bytestring)
             return bytestring.decode('latin1')

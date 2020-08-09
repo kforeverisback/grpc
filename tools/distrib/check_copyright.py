@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from __future__ import print_function
 import argparse
 import datetime
 import os
@@ -27,8 +28,10 @@ os.chdir(ROOT)
 
 # parse command line
 argp = argparse.ArgumentParser(description='copyright checker')
-argp.add_argument(
-    '-o', '--output', default='details', choices=['list', 'details'])
+argp.add_argument('-o',
+                  '--output',
+                  default='details',
+                  choices=['list', 'details'])
 argp.add_argument('-s', '--skips', default=0, action='store_const', const=1)
 argp.add_argument('-a', '--ancient', default=0, action='store_const', const=1)
 argp.add_argument('--precommit', default=False, action='store_true')
@@ -75,16 +78,9 @@ _EXEMPT = frozenset((
     'examples/python/multiplex/route_guide_pb2_grpc.py',
     'examples/python/route_guide/route_guide_pb2.py',
     'examples/python/route_guide/route_guide_pb2_grpc.py',
-    'src/core/ext/filters/client_channel/lb_policy/grpclb/proto/grpc/lb/v1/load_balancer.pb.h',
-    'src/core/ext/filters/client_channel/lb_policy/grpclb/proto/grpc/lb/v1/load_balancer.pb.c',
-    'src/core/tsi/alts/handshaker/altscontext.pb.h',
-    'src/core/tsi/alts/handshaker/altscontext.pb.c',
-    'src/core/tsi/alts/handshaker/handshaker.pb.h',
-    'src/core/tsi/alts/handshaker/handshaker.pb.c',
-    'src/core/tsi/alts/handshaker/transport_security_common.pb.h',
-    'src/core/tsi/alts/handshaker/transport_security_common.pb.c',
-    'src/cpp/server/health/health.pb.h',
-    'src/cpp/server/health/health.pb.c',
+
+    # Generated doxygen config file
+    'tools/doxygen/Doxyfile.php',
 
     # An older file originally from outside gRPC.
     'src/php/tests/bootstrap.php',
@@ -93,11 +89,20 @@ _EXEMPT = frozenset((
     # status.proto copied from googleapis
     'src/proto/grpc/status/status.proto',
 
-    # Gradle wrapper used to build for Android
+    # Gradle wrappers used to build for Android
     'examples/android/helloworld/gradlew.bat',
+    'src/android/test/interop/gradlew.bat',
+
+    # Designer-generated source
+    'examples/csharp/HelloworldXamarin/Droid/Resources/Resource.designer.cs',
+    'examples/csharp/HelloworldXamarin/iOS/ViewController.designer.cs',
+
+    # BoringSSL generated header. It has commit version information at the head
+    # of the file so we cannot check the license info.
+    'src/boringssl/boringssl_prefix_symbols.h',
 ))
 
-RE_YEAR = r'Copyright (?P<first_year>[0-9]+\-)?(?P<last_year>[0-9]+) gRPC authors.'
+RE_YEAR = r'Copyright (?P<first_year>[0-9]+\-)?(?P<last_year>[0-9]+) ([Tt]he )?gRPC [Aa]uthors(\.|)'
 RE_LICENSE = dict(
     (k, r'\n'.join(LICENSE_PREFIX[k] +
                    (RE_YEAR if re.search(RE_YEAR, line) else re.escape(line))
@@ -128,22 +133,25 @@ assert (re.search(RE_LICENSE['Makefile'], load('Makefile')))
 def log(cond, why, filename):
     if not cond: return
     if args.output == 'details':
-        print '%s: %s' % (why, filename)
+        print('%s: %s' % (why, filename))
     else:
-        print filename
+        print(filename)
 
 
 # scan files, validate the text
 ok = True
 filename_list = []
 try:
-    filename_list = subprocess.check_output(
-        FILE_LIST_COMMAND, shell=True).splitlines()
+    filename_list = subprocess.check_output(FILE_LIST_COMMAND,
+                                            shell=True).splitlines()
 except subprocess.CalledProcessError:
     sys.exit(0)
 
 for filename in filename_list:
     if filename in _EXEMPT:
+        continue
+    # Skip check for upb generated code.
+    if filename.endswith('.upb.h') or filename.endswith('.upb.c'):
         continue
     ext = os.path.splitext(filename)[1]
     base = os.path.basename(filename)
@@ -161,9 +169,7 @@ for filename in filename_list:
     m = re.search(re_license, text)
     if m:
         pass
-    elif 'DO NOT EDIT' not in text and filename not in [
-            'src/boringssl/err_data.c', 'src/boringssl/crypto_test_data.cc'
-    ]:
+    elif 'DO NOT EDIT' not in text:
         log(1, 'copyright missing', filename)
         ok = False
 

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-require 'grpc'
+require 'spec_helper'
 
 describe GRPC::Core::ChannelCredentials do
   ChannelCredentials = GRPC::Core::ChannelCredentials
@@ -49,6 +49,16 @@ describe GRPC::Core::ChannelCredentials do
     it 'can be constructed with no params' do
       blk = proc { ChannelCredentials.new(nil) }
       expect(&blk).not_to raise_error
+    end
+
+    it 'fails gracefully with constructed with a nil private key' do
+      blk = proc { GRPC::Core::ChannelCredentials.new(nil, nil, '') }
+      expect(&blk).to raise_error
+    end
+
+    it 'fails gracefully with constructed with a nil cert chain' do
+      blk = proc { GRPC::Core::ChannelCredentials.new(nil, '', nil) }
+      expect(&blk).to raise_error
     end
   end
 

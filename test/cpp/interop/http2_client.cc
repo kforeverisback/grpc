@@ -42,16 +42,16 @@ const int kLargeRequestSize = 271828;
 const int kLargeResponseSize = 314159;
 }  // namespace
 
-Http2Client::ServiceStub::ServiceStub(std::shared_ptr<Channel> channel)
-    : channel_(channel) {
+Http2Client::ServiceStub::ServiceStub(const std::shared_ptr<Channel>& channel)
+    : channel_(std::move(channel)) {
   stub_ = TestService::NewStub(channel);
 }
 
 TestService::Stub* Http2Client::ServiceStub::Get() { return stub_.get(); }
 
-Http2Client::Http2Client(std::shared_ptr<Channel> channel)
+Http2Client::Http2Client(const std::shared_ptr<Channel>& channel)
     : serviceStub_(channel),
-      channel_(channel),
+      channel_(std::move(channel)),
       defaultRequest_(BuildDefaultRequest()) {}
 
 bool Http2Client::AssertStatusCode(const Status& s, StatusCode expected_code) {
@@ -72,7 +72,7 @@ Status Http2Client::SendUnaryCall(SimpleResponse* response) {
 SimpleRequest Http2Client::BuildDefaultRequest() {
   SimpleRequest request;
   request.set_response_size(kLargeResponseSize);
-  grpc::string payload(kLargeRequestSize, '\0');
+  std::string payload(kLargeRequestSize, '\0');
   request.mutable_payload()->set_body(payload.c_str(), kLargeRequestSize);
   return request;
 }
@@ -115,7 +115,7 @@ bool Http2Client::DoGoaway() {
   SimpleResponse response;
   AssertStatusCode(SendUnaryCall(&response), grpc::StatusCode::OK);
   GPR_ASSERT(response.payload().body() ==
-             grpc::string(kLargeResponseSize, '\0'));
+             std::string(kLargeResponseSize, '\0'));
 
   // Sleep for one second to give time for client to receive goaway frame.
   gpr_timespec sleep_time = gpr_time_add(
@@ -125,7 +125,7 @@ bool Http2Client::DoGoaway() {
   response.Clear();
   AssertStatusCode(SendUnaryCall(&response), grpc::StatusCode::OK);
   GPR_ASSERT(response.payload().body() ==
-             grpc::string(kLargeResponseSize, '\0'));
+             std::string(kLargeResponseSize, '\0'));
   gpr_log(GPR_DEBUG, "Done testing goaway");
   return true;
 }
@@ -135,16 +135,17 @@ bool Http2Client::DoPing() {
   SimpleResponse response;
   AssertStatusCode(SendUnaryCall(&response), grpc::StatusCode::OK);
   GPR_ASSERT(response.payload().body() ==
-             grpc::string(kLargeResponseSize, '\0'));
+             std::string(kLargeResponseSize, '\0'));
   gpr_log(GPR_DEBUG, "Done testing ping");
   return true;
 }
 
-void Http2Client::MaxStreamsWorker(std::shared_ptr<grpc::Channel> channel) {
+void Http2Client::MaxStreamsWorker(
+    const std::shared_ptr<grpc::Channel>& /*channel*/) {
   SimpleResponse response;
   AssertStatusCode(SendUnaryCall(&response), grpc::StatusCode::OK);
   GPR_ASSERT(response.payload().body() ==
-             grpc::string(kLargeResponseSize, '\0'));
+             std::string(kLargeResponseSize, '\0'));
 }
 
 bool Http2Client::DoMaxStreams() {
@@ -155,7 +156,7 @@ bool Http2Client::DoMaxStreams() {
   SimpleResponse response;
   AssertStatusCode(SendUnaryCall(&response), grpc::StatusCode::OK);
   GPR_ASSERT(response.payload().body() ==
-             grpc::string(kLargeResponseSize, '\0'));
+             std::string(kLargeResponseSize, '\0'));
 
   std::vector<std::thread> test_threads;
 
@@ -194,7 +195,7 @@ int main(int argc, char** argv) {
   snprintf(host_port, host_port_buf_size, "%s:%d", FLAGS_server_host.c_str(),
            FLAGS_server_port);
   std::shared_ptr<grpc::Channel> channel =
-      grpc::CreateTestChannel(host_port, false);
+      grpc::CreateTestChannel(host_port, grpc::testing::INSECURE);
   GPR_ASSERT(channel->WaitForConnected(gpr_time_add(
       gpr_now(GPR_CLOCK_REALTIME), gpr_time_from_seconds(300, GPR_TIMESPAN))));
   grpc::testing::Http2Client client(channel);

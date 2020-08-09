@@ -48,32 +48,32 @@ TEST(RefCountedPtr, ExplicitConstructorEmpty) {
   RefCountedPtr<Foo> foo(nullptr);
 }
 
-TEST(RefCountedPtr, ExplicitConstructor) { RefCountedPtr<Foo> foo(New<Foo>()); }
+TEST(RefCountedPtr, ExplicitConstructor) { RefCountedPtr<Foo> foo(new Foo()); }
 
 TEST(RefCountedPtr, MoveConstructor) {
-  RefCountedPtr<Foo> foo(New<Foo>());
+  RefCountedPtr<Foo> foo(new Foo());
   RefCountedPtr<Foo> foo2(std::move(foo));
   EXPECT_EQ(nullptr, foo.get());
   EXPECT_NE(nullptr, foo2.get());
 }
 
 TEST(RefCountedPtr, MoveAssignment) {
-  RefCountedPtr<Foo> foo(New<Foo>());
+  RefCountedPtr<Foo> foo(new Foo());
   RefCountedPtr<Foo> foo2 = std::move(foo);
   EXPECT_EQ(nullptr, foo.get());
   EXPECT_NE(nullptr, foo2.get());
 }
 
 TEST(RefCountedPtr, CopyConstructor) {
-  RefCountedPtr<Foo> foo(New<Foo>());
-  RefCountedPtr<Foo> foo2(foo);
+  RefCountedPtr<Foo> foo(new Foo());
+  const RefCountedPtr<Foo>& foo2(foo);
   EXPECT_NE(nullptr, foo.get());
   EXPECT_EQ(foo.get(), foo2.get());
 }
 
 TEST(RefCountedPtr, CopyAssignment) {
-  RefCountedPtr<Foo> foo(New<Foo>());
-  RefCountedPtr<Foo> foo2 = foo;
+  RefCountedPtr<Foo> foo(new Foo());
+  const RefCountedPtr<Foo>& foo2 = foo;
   EXPECT_NE(nullptr, foo.get());
   EXPECT_EQ(foo.get(), foo2.get());
 }
@@ -87,12 +87,12 @@ TEST(RefCountedPtr, CopyAssignmentWhenEmpty) {
 }
 
 TEST(RefCountedPtr, CopyAssignmentToSelf) {
-  RefCountedPtr<Foo> foo(New<Foo>());
-  foo = foo;
+  RefCountedPtr<Foo> foo(new Foo());
+  foo = *&foo;  // The "*&" avoids warnings from LLVM -Wself-assign.
 }
 
 TEST(RefCountedPtr, EnclosedScope) {
-  RefCountedPtr<Foo> foo(New<Foo>());
+  RefCountedPtr<Foo> foo(new Foo());
   {
     RefCountedPtr<Foo> foo2(std::move(foo));
     EXPECT_EQ(nullptr, foo.get());
@@ -104,21 +104,21 @@ TEST(RefCountedPtr, EnclosedScope) {
 TEST(RefCountedPtr, ResetFromNullToNonNull) {
   RefCountedPtr<Foo> foo;
   EXPECT_EQ(nullptr, foo.get());
-  foo.reset(New<Foo>());
+  foo.reset(new Foo());
   EXPECT_NE(nullptr, foo.get());
 }
 
 TEST(RefCountedPtr, ResetFromNonNullToNonNull) {
-  RefCountedPtr<Foo> foo(New<Foo>());
+  RefCountedPtr<Foo> foo(new Foo());
   EXPECT_NE(nullptr, foo.get());
   Foo* original = foo.get();
-  foo.reset(New<Foo>());
+  foo.reset(new Foo());
   EXPECT_NE(nullptr, foo.get());
   EXPECT_NE(original, foo.get());
 }
 
 TEST(RefCountedPtr, ResetFromNonNullToNull) {
-  RefCountedPtr<Foo> foo(New<Foo>());
+  RefCountedPtr<Foo> foo(new Foo());
   EXPECT_NE(nullptr, foo.get());
   foo.reset();
   EXPECT_EQ(nullptr, foo.get());
@@ -127,19 +127,19 @@ TEST(RefCountedPtr, ResetFromNonNullToNull) {
 TEST(RefCountedPtr, ResetFromNullToNull) {
   RefCountedPtr<Foo> foo;
   EXPECT_EQ(nullptr, foo.get());
-  foo.reset(nullptr);
+  foo.reset();
   EXPECT_EQ(nullptr, foo.get());
 }
 
 TEST(RefCountedPtr, DerefernceOperators) {
-  RefCountedPtr<Foo> foo(New<Foo>());
+  RefCountedPtr<Foo> foo(new Foo());
   foo->value();
   Foo& foo_ref = *foo;
   foo_ref.value();
 }
 
 TEST(RefCountedPtr, EqualityOperators) {
-  RefCountedPtr<Foo> foo(New<Foo>());
+  RefCountedPtr<Foo> foo(new Foo());
   RefCountedPtr<Foo> bar = foo;
   RefCountedPtr<Foo> empty;
   // Test equality between RefCountedPtrs.
@@ -149,6 +149,20 @@ TEST(RefCountedPtr, EqualityOperators) {
   EXPECT_EQ(foo, foo.get());
   EXPECT_EQ(empty, nullptr);
   EXPECT_NE(foo, nullptr);
+}
+
+TEST(RefCountedPtr, Swap) {
+  Foo* foo = new Foo();
+  Foo* bar = new Foo();
+  RefCountedPtr<Foo> ptr1(foo);
+  RefCountedPtr<Foo> ptr2(bar);
+  ptr1.swap(ptr2);
+  EXPECT_EQ(foo, ptr2.get());
+  EXPECT_EQ(bar, ptr1.get());
+  RefCountedPtr<Foo> ptr3;
+  ptr3.swap(ptr2);
+  EXPECT_EQ(nullptr, ptr2.get());
+  EXPECT_EQ(foo, ptr3.get());
 }
 
 TEST(MakeRefCounted, NoArgs) {
@@ -163,16 +177,77 @@ TEST(MakeRefCounted, Args) {
 
 TraceFlag foo_tracer(true, "foo");
 
-class FooWithTracing : public RefCountedWithTracing<FooWithTracing> {
+class FooWithTracing : public RefCounted<FooWithTracing> {
  public:
-  FooWithTracing() : RefCountedWithTracing(&foo_tracer) {}
+  FooWithTracing() : RefCounted(&foo_tracer) {}
 };
 
 TEST(RefCountedPtr, RefCountedWithTracing) {
-  RefCountedPtr<FooWithTracing> foo(New<FooWithTracing>());
+  RefCountedPtr<FooWithTracing> foo(new FooWithTracing());
   RefCountedPtr<FooWithTracing> foo2 = foo->Ref(DEBUG_LOCATION, "foo");
   foo2.release();
   foo->Unref(DEBUG_LOCATION, "foo");
+}
+
+class BaseClass : public RefCounted<BaseClass> {
+ public:
+  BaseClass() {}
+};
+
+class Subclass : public BaseClass {
+ public:
+  Subclass() {}
+};
+
+TEST(RefCountedPtr, ConstructFromSubclass) {
+  RefCountedPtr<BaseClass> p(new Subclass());
+}
+
+TEST(RefCountedPtr, CopyAssignFromSubclass) {
+  RefCountedPtr<BaseClass> b;
+  EXPECT_EQ(nullptr, b.get());
+  RefCountedPtr<Subclass> s = MakeRefCounted<Subclass>();
+  b = s;
+  EXPECT_NE(nullptr, b.get());
+}
+
+TEST(RefCountedPtr, MoveAssignFromSubclass) {
+  RefCountedPtr<BaseClass> b;
+  EXPECT_EQ(nullptr, b.get());
+  RefCountedPtr<Subclass> s = MakeRefCounted<Subclass>();
+  b = std::move(s);
+  EXPECT_NE(nullptr, b.get());
+}
+
+TEST(RefCountedPtr, ResetFromSubclass) {
+  RefCountedPtr<BaseClass> b;
+  EXPECT_EQ(nullptr, b.get());
+  b.reset(new Subclass());
+  EXPECT_NE(nullptr, b.get());
+}
+
+TEST(RefCountedPtr, EqualityWithSubclass) {
+  Subclass* s = new Subclass();
+  RefCountedPtr<BaseClass> b(s);
+  EXPECT_EQ(b, s);
+}
+
+void FunctionTakingBaseClass(RefCountedPtr<BaseClass> p) {
+  p.reset();  // To appease clang-tidy.
+}
+
+TEST(RefCountedPtr, CanPassSubclassToFunctionExpectingBaseClass) {
+  RefCountedPtr<Subclass> p = MakeRefCounted<Subclass>();
+  FunctionTakingBaseClass(p);
+}
+
+void FunctionTakingSubclass(RefCountedPtr<Subclass> p) {
+  p.reset();  // To appease clang-tidy.
+}
+
+TEST(RefCountedPtr, CanPassSubclassToFunctionExpectingSubclass) {
+  RefCountedPtr<Subclass> p = MakeRefCounted<Subclass>();
+  FunctionTakingSubclass(p);
 }
 
 }  // namespace
@@ -180,7 +255,7 @@ TEST(RefCountedPtr, RefCountedWithTracing) {
 }  // namespace grpc_core
 
 int main(int argc, char** argv) {
-  grpc_test_init(argc, argv);
+  grpc::testing::TestEnvironment env(argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

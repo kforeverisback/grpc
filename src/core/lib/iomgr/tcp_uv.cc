@@ -33,7 +33,6 @@
 #include "src/core/lib/gpr/string.h"
 #include "src/core/lib/iomgr/error.h"
 #include "src/core/lib/iomgr/iomgr_custom.h"
-#include "src/core/lib/iomgr/network_status_tracker.h"
 #include "src/core/lib/iomgr/resolve_address_custom.h"
 #include "src/core/lib/iomgr/resource_quota.h"
 #include "src/core/lib/iomgr/tcp_custom.h"
@@ -54,7 +53,7 @@ typedef struct uv_socket_t {
   char* read_buf;
   size_t read_len;
 
-  bool pending_connection;
+  int pending_connections;
   grpc_custom_socket* accept_socket;
   grpc_error* accept_error;
 
@@ -192,10 +191,22 @@ static grpc_error* uv_socket_init_helper(uv_socket_t* uv_socket, int domain) {
   if (status != 0) {
     return tcp_error_create("Failed to initialize UV tcp handle", status);
   }
+#if defined(GPR_LINUX) && defined(SO_REUSEPORT)
+  if (domain == AF_INET || domain == AF_INET6) {
+    int enable = 1;
+    int fd;
+    uv_fileno((uv_handle_t*)tcp, &fd);
+    // TODO Handle error here.
+    setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, &enable, sizeof(enable));
+  }
+#endif
   uv_socket->write_buffers = nullptr;
   uv_socket->read_len = 0;
   uv_tcp_nodelay(uv_socket->handle, 1);
-  uv_socket->pending_connection = false;
+  // Node uses a garbage collector to call destructors, so we don't
+  // want to hold the uv loop open with active gRPC objects.
+  uv_unref((uv_handle_t*)uv_socket->handle);
+  uv_socket->pending_connections = 0;
   uv_socket->accept_socket = nullptr;
   uv_socket->accept_error = GRPC_ERROR_NONE;
   return GRPC_ERROR_NONE;
@@ -232,14 +243,14 @@ static grpc_error* uv_socket_getsockname(grpc_custom_socket* socket,
 
 static void accept_new_connection(grpc_custom_socket* socket) {
   uv_socket_t* uv_socket = (uv_socket_t*)socket->impl;
-  if (!uv_socket->pending_connection || !uv_socket->accept_socket) {
+  if (uv_socket->pending_connections == 0 || !uv_socket->accept_socket) {
     return;
   }
   grpc_custom_socket* new_socket = uv_socket->accept_socket;
   grpc_error* error = uv_socket->accept_error;
   uv_socket->accept_socket = nullptr;
   uv_socket->accept_error = GRPC_ERROR_NONE;
-  uv_socket->pending_connection = false;
+  uv_socket->pending_connections -= 1;
   if (uv_socket->accept_error != GRPC_ERROR_NONE) {
     uv_stream_t dummy_handle;
     uv_accept((uv_stream_t*)uv_socket->handle, &dummy_handle);
@@ -259,8 +270,6 @@ static void accept_new_connection(grpc_custom_socket* socket) {
 static void uv_on_connect(uv_stream_t* server, int status) {
   grpc_custom_socket* socket = (grpc_custom_socket*)server->data;
   uv_socket_t* uv_socket = (uv_socket_t*)socket->impl;
-  GPR_ASSERT(!uv_socket->pending_connection);
-  uv_socket->pending_connection = true;
   if (status < 0) {
     switch (status) {
       case UV_EINTR:
@@ -270,6 +279,7 @@ static void uv_on_connect(uv_stream_t* server, int status) {
         uv_socket->accept_error = tcp_error_create("accept failed", status);
     }
   }
+  uv_socket->pending_connections += 1;
   accept_new_connection(socket);
 }
 
@@ -297,17 +307,6 @@ static grpc_error* uv_socket_listen(grpc_custom_socket* socket) {
   int status =
       uv_listen((uv_stream_t*)uv_socket->handle, SOMAXCONN, uv_on_connect);
   return tcp_error_create("Failed to listen to port", status);
-}
-
-static grpc_error* uv_socket_setsockopt(grpc_custom_socket* socket, int level,
-                                        int option_name, const void* optval,
-                                        socklen_t option_len) {
-  int fd;
-  uv_socket_t* uv_socket = (uv_socket_t*)socket->impl;
-  uv_fileno((uv_handle_t*)uv_socket->handle, &fd);
-  // TODO Handle error here.  Also, does this work on windows??
-  setsockopt(fd, level, option_name, &optval, (socklen_t)option_len);
-  return GRPC_ERROR_NONE;
 }
 
 static void uv_tc_on_connect(uv_connect_t* req, int status) {
@@ -340,7 +339,6 @@ static void uv_socket_connect(grpc_custom_socket* socket,
 static grpc_resolved_addresses* handle_addrinfo_result(
     struct addrinfo* result) {
   struct addrinfo* resp;
-  struct addrinfo* prev;
   size_t i;
   grpc_resolved_addresses* addresses =
       (grpc_resolved_addresses*)gpr_malloc(sizeof(grpc_resolved_addresses));
@@ -350,16 +348,13 @@ static grpc_resolved_addresses* handle_addrinfo_result(
   }
   addresses->addrs = (grpc_resolved_address*)gpr_malloc(
       sizeof(grpc_resolved_address) * addresses->naddrs);
-  i = 0;
-  resp = result;
-  while (resp != nullptr) {
+  for (resp = result, i = 0; resp != nullptr; resp = resp->ai_next, i++) {
     memcpy(&addresses->addrs[i].addr, resp->ai_addr, resp->ai_addrlen);
     addresses->addrs[i].len = resp->ai_addrlen;
-    i++;
-    prev = resp;
-    resp = resp->ai_next;
-    gpr_free(prev);
   }
+  // addrinfo objects are allocated by libuv (e.g. in uv_getaddrinfo)
+  // and not by gpr_malloc
+  uv_freeaddrinfo(result);
   return addresses;
 }
 
@@ -375,7 +370,7 @@ static void uv_resolve_callback(uv_getaddrinfo_t* req, int status,
                                tcp_error_create("getaddrinfo failed", status));
 }
 
-static grpc_error* uv_resolve(char* host, char* port,
+static grpc_error* uv_resolve(const char* host, const char* port,
                               grpc_resolved_addresses** result) {
   int status;
   uv_getaddrinfo_t req;
@@ -393,7 +388,8 @@ static grpc_error* uv_resolve(char* host, char* port,
   return tcp_error_create("getaddrinfo failed", status);
 }
 
-static void uv_resolve_async(grpc_custom_resolver* r, char* host, char* port) {
+static void uv_resolve_async(grpc_custom_resolver* r, const char* host,
+                             const char* port) {
   int status;
   uv_getaddrinfo_t* req =
       (uv_getaddrinfo_t*)gpr_malloc(sizeof(uv_getaddrinfo_t));
@@ -415,10 +411,9 @@ static void uv_resolve_async(grpc_custom_resolver* r, char* host, char* port) {
 grpc_custom_resolver_vtable uv_resolver_vtable = {uv_resolve, uv_resolve_async};
 
 grpc_socket_vtable grpc_uv_socket_vtable = {
-    uv_socket_init,       uv_socket_connect,     uv_socket_destroy,
-    uv_socket_shutdown,   uv_socket_close,       uv_socket_write,
-    uv_socket_read,       uv_socket_getpeername, uv_socket_getsockname,
-    uv_socket_setsockopt, uv_socket_bind,        uv_socket_listen,
-    uv_socket_accept};
+    uv_socket_init,     uv_socket_connect,     uv_socket_destroy,
+    uv_socket_shutdown, uv_socket_close,       uv_socket_write,
+    uv_socket_read,     uv_socket_getpeername, uv_socket_getsockname,
+    uv_socket_bind,     uv_socket_listen,      uv_socket_accept};
 
 #endif

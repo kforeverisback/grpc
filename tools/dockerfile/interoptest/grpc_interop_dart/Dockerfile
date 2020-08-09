@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM google/dart:latest
+FROM google/dart:2.7
 
 # Define the default command.
 CMD ["bash"]

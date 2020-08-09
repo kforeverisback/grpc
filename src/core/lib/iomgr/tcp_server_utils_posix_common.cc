@@ -20,7 +20,7 @@
 
 #include "src/core/lib/iomgr/port.h"
 
-#ifdef GRPC_POSIX_SOCKET
+#ifdef GRPC_POSIX_SOCKET_TCP_SERVER_UTILS_COMMON
 
 #include "src/core/lib/iomgr/tcp_server_utils_posix.h"
 
@@ -29,9 +29,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <string>
+
+#include "absl/strings/str_cat.h"
+
 #include <grpc/support/alloc.h>
 #include <grpc/support/log.h>
-#include <grpc/support/string_util.h>
 #include <grpc/support/sync.h>
 
 #include "src/core/lib/iomgr/error.h"
@@ -83,15 +86,13 @@ static grpc_error* add_socket_to_server(grpc_tcp_server* s, int fd,
                                         grpc_tcp_listener** listener) {
   grpc_tcp_listener* sp = nullptr;
   int port = -1;
-  char* addr_str;
-  char* name;
 
   grpc_error* err =
-      grpc_tcp_server_prepare_socket(fd, addr, s->so_reuseport, &port);
+      grpc_tcp_server_prepare_socket(s, fd, addr, s->so_reuseport, &port);
   if (err == GRPC_ERROR_NONE) {
     GPR_ASSERT(port > 0);
-    grpc_sockaddr_to_string(&addr_str, addr, 1);
-    gpr_asprintf(&name, "tcp-server-listener:%s", addr_str);
+    std::string addr_str = grpc_sockaddr_to_string(addr, true);
+    std::string name = absl::StrCat("tcp-server-listener:", addr_str);
     gpr_mu_lock(&s->mu);
     s->nports++;
     GPR_ASSERT(!s->on_accept_cb && "must add ports before starting server");
@@ -105,7 +106,7 @@ static grpc_error* add_socket_to_server(grpc_tcp_server* s, int fd,
     s->tail = sp;
     sp->server = s;
     sp->fd = fd;
-    sp->emfd = grpc_fd_create(fd, name);
+    sp->emfd = grpc_fd_create(fd, name.c_str(), true);
     memcpy(&sp->addr, addr, sizeof(grpc_resolved_address));
     sp->port = port;
     sp->port_index = port_index;
@@ -114,8 +115,6 @@ static grpc_error* add_socket_to_server(grpc_tcp_server* s, int fd,
     sp->sibling = nullptr;
     GPR_ASSERT(sp->emfd);
     gpr_mu_unlock(&s->mu);
-    gpr_free(addr_str);
-    gpr_free(name);
   }
 
   *listener = sp;
@@ -144,7 +143,7 @@ grpc_error* grpc_tcp_server_add_addr(grpc_tcp_server* s,
 }
 
 /* Prepare a recently-created socket for listening. */
-grpc_error* grpc_tcp_server_prepare_socket(int fd,
+grpc_error* grpc_tcp_server_prepare_socket(grpc_tcp_server* s, int fd,
                                            const grpc_resolved_address* addr,
                                            bool so_reuseport, int* port) {
   grpc_resolved_address sockname_temp;
@@ -157,6 +156,14 @@ grpc_error* grpc_tcp_server_prepare_socket(int fd,
     if (err != GRPC_ERROR_NONE) goto error;
   }
 
+#ifdef GRPC_LINUX_ERRQUEUE
+  err = grpc_set_socket_zerocopy(fd);
+  if (err != GRPC_ERROR_NONE) {
+    /* it's not fatal, so just log it. */
+    gpr_log(GPR_DEBUG, "Node does not support SO_ZEROCOPY, continuing.");
+    GRPC_ERROR_UNREF(err);
+  }
+#endif
   err = grpc_set_socket_nonblocking(fd, 1);
   if (err != GRPC_ERROR_NONE) goto error;
   err = grpc_set_socket_cloexec(fd, 1);
@@ -166,11 +173,16 @@ grpc_error* grpc_tcp_server_prepare_socket(int fd,
     if (err != GRPC_ERROR_NONE) goto error;
     err = grpc_set_socket_reuse_addr(fd, 1);
     if (err != GRPC_ERROR_NONE) goto error;
+    err = grpc_set_socket_tcp_user_timeout(fd, s->channel_args,
+                                           false /* is_client */);
+    if (err != GRPC_ERROR_NONE) goto error;
   }
   err = grpc_set_socket_no_sigpipe_if_possible(fd);
   if (err != GRPC_ERROR_NONE) goto error;
 
-  GPR_ASSERT(addr->len < ~(socklen_t)0);
+  err = grpc_apply_socket_mutator_in_args(fd, s->channel_args);
+  if (err != GRPC_ERROR_NONE) goto error;
+
   if (bind(fd, reinterpret_cast<grpc_sockaddr*>(const_cast<char*>(addr->addr)),
            addr->len) < 0) {
     err = GRPC_OS_ERROR(errno, "bind");
@@ -206,4 +218,4 @@ error:
   return ret;
 }
 
-#endif /* GRPC_POSIX_SOCKET */
+#endif /* GRPC_POSIX_SOCKET_TCP_SERVER_UTILS_COMMON */

@@ -31,6 +31,7 @@ namespace Grpc.Core.Internal.Tests
     /// </summary>
     internal class FakeNativeCall : INativeCall
     {
+        private bool shouldStartCallFail;
         public IUnaryResponseClientCallback UnaryResponseClientCallback
         {
             get;
@@ -100,28 +101,33 @@ namespace Grpc.Core.Internal.Tests
             return "PEER";
         }
 
-        public void StartUnary(IUnaryResponseClientCallback callback, byte[] payload, WriteFlags writeFlags, MetadataArraySafeHandle metadataArray, CallFlags callFlags)
+        public void StartUnary(IUnaryResponseClientCallback callback, SliceBufferSafeHandle payload, WriteFlags writeFlags, MetadataArraySafeHandle metadataArray, CallFlags callFlags)
         {
+            StartCallMaybeFail();
             UnaryResponseClientCallback = callback;
         }
 
-        public void StartUnary(BatchContextSafeHandle ctx, byte[] payload, WriteFlags writeFlags, MetadataArraySafeHandle metadataArray, CallFlags callFlags)
+        public void StartUnary(BatchContextSafeHandle ctx, SliceBufferSafeHandle payload, WriteFlags writeFlags, MetadataArraySafeHandle metadataArray, CallFlags callFlags)
         {
+            StartCallMaybeFail();
             throw new NotImplementedException();
         }
 
         public void StartClientStreaming(IUnaryResponseClientCallback callback, MetadataArraySafeHandle metadataArray, CallFlags callFlags)
         {
+            StartCallMaybeFail();
             UnaryResponseClientCallback = callback;
         }
 
-        public void StartServerStreaming(IReceivedStatusOnClientCallback callback, byte[] payload, WriteFlags writeFlags, MetadataArraySafeHandle metadataArray, CallFlags callFlags)
+        public void StartServerStreaming(IReceivedStatusOnClientCallback callback, SliceBufferSafeHandle payload, WriteFlags writeFlags, MetadataArraySafeHandle metadataArray, CallFlags callFlags)
         {
+            StartCallMaybeFail();
             ReceivedStatusOnClientCallback = callback;
         }
 
         public void StartDuplexStreaming(IReceivedStatusOnClientCallback callback, MetadataArraySafeHandle metadataArray, CallFlags callFlags)
         {
+            StartCallMaybeFail();
             ReceivedStatusOnClientCallback = callback;
         }
 
@@ -140,7 +146,7 @@ namespace Grpc.Core.Internal.Tests
             SendCompletionCallback = callback;
         }
 
-        public void StartSendMessage(ISendCompletionCallback callback, byte[] payload, WriteFlags writeFlags, bool sendEmptyInitialMetadata)
+        public void StartSendMessage(ISendCompletionCallback callback, SliceBufferSafeHandle payload, WriteFlags writeFlags, bool sendEmptyInitialMetadata)
         {
             SendCompletionCallback = callback;
         }
@@ -151,7 +157,7 @@ namespace Grpc.Core.Internal.Tests
         }
 
         public void StartSendStatusFromServer(ISendStatusFromServerCompletionCallback callback, Status status, MetadataArraySafeHandle metadataArray, bool sendEmptyInitialMetadata,
-            byte[] optionalPayload, WriteFlags writeFlags)
+            SliceBufferSafeHandle payload, WriteFlags writeFlags)
         {
             SendStatusFromServerCallback = callback;
         }
@@ -164,6 +170,23 @@ namespace Grpc.Core.Internal.Tests
         public void Dispose()
         {
             IsDisposed = true;
+        }
+
+        /// <summary>
+        /// Emulate CallSafeHandle.CheckOk() failure for all future attempts
+        /// to start a call.
+        /// </summary>
+        public void MakeStartCallFail()
+        {
+            shouldStartCallFail = true;
+        }
+
+        private void StartCallMaybeFail()
+        {
+            if (shouldStartCallFail)
+            {
+                throw new InvalidOperationException("Start call has failed.");
+            }
         }
     }
 }

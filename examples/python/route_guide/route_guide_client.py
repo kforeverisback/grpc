@@ -16,6 +16,7 @@
 from __future__ import print_function
 
 import random
+import logging
 
 import grpc
 
@@ -43,9 +44,8 @@ def guide_get_one_feature(stub, point):
 
 
 def guide_get_feature(stub):
-    guide_get_one_feature(stub,
-                          route_guide_pb2.Point(
-                              latitude=409146138, longitude=-746188906))
+    guide_get_one_feature(
+        stub, route_guide_pb2.Point(latitude=409146138, longitude=-746188906))
     guide_get_one_feature(stub, route_guide_pb2.Point(latitude=0, longitude=0))
 
 
@@ -95,22 +95,26 @@ def generate_messages():
 def guide_route_chat(stub):
     responses = stub.RouteChat(generate_messages())
     for response in responses:
-        print("Received message %s at %s" % (response.message,
-                                             response.location))
+        print("Received message %s at %s" %
+              (response.message, response.location))
 
 
 def run():
-    channel = grpc.insecure_channel('localhost:50051')
-    stub = route_guide_pb2_grpc.RouteGuideStub(channel)
-    print("-------------- GetFeature --------------")
-    guide_get_feature(stub)
-    print("-------------- ListFeatures --------------")
-    guide_list_features(stub)
-    print("-------------- RecordRoute --------------")
-    guide_record_route(stub)
-    print("-------------- RouteChat --------------")
-    guide_route_chat(stub)
+    # NOTE(gRPC Python Team): .close() is possible on a channel and should be
+    # used in circumstances in which the with statement does not fit the needs
+    # of the code.
+    with grpc.insecure_channel('localhost:50051') as channel:
+        stub = route_guide_pb2_grpc.RouteGuideStub(channel)
+        print("-------------- GetFeature --------------")
+        guide_get_feature(stub)
+        print("-------------- ListFeatures --------------")
+        guide_list_features(stub)
+        print("-------------- RecordRoute --------------")
+        guide_record_route(stub)
+        print("-------------- RouteChat --------------")
+        guide_route_chat(stub)
 
 
 if __name__ == '__main__':
+    logging.basicConfig()
     run()

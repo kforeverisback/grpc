@@ -18,7 +18,7 @@
 
 // Hack TEST macro of gTest and make they conform XCTest style. We only
 // need test name (b), not test case name (a).
-#define TEST(a,b) - (void)test ## b
+#define TEST(a, b) -(void)test##b
 #define ASSERT_TRUE XCTAssert
 #define ASSERT_EQ XCTAssertEqual
 
@@ -38,12 +38,10 @@ const char key2[] = "metadata-key2";
 const char val1[] = "metadata-val1";
 const char val2[] = "metadata-val2";
 
-bool ClientMetadataContains(const grpc::ServerContext& context,
-                            const grpc::string_ref& key,
+bool ClientMetadataContains(const grpc::ServerContext& context, const grpc::string_ref& key,
                             const grpc::string_ref& value) {
   const auto& client_metadata = context.client_metadata();
-  for (auto iter = client_metadata.begin(); iter != client_metadata.end();
-       ++iter) {
+  for (auto iter = client_metadata.begin(); iter != client_metadata.end(); ++iter) {
     if (iter->first == key && iter->second == value) {
       return true;
     }
@@ -72,28 +70,28 @@ TEST(ServerContextTestSpouseTest, ClientMetadata) {
 TEST(ServerContextTestSpouseTest, InitialMetadata) {
   grpc::ServerContext context;
   grpc::testing::ServerContextTestSpouse spouse(&context);
-  std::multimap<grpc::string, grpc::string> metadata;
+  std::multimap<std::string, std::string> metadata;
 
   context.AddInitialMetadata(key1, val1);
-  metadata.insert(std::pair<grpc::string, grpc::string>(key1, val1));
+  metadata.insert(std::pair<std::string, std::string>(key1, val1));
   ASSERT_EQ(metadata, spouse.GetInitialMetadata());
 
   context.AddInitialMetadata(key2, val2);
-  metadata.insert(std::pair<grpc::string, grpc::string>(key2, val2));
+  metadata.insert(std::pair<std::string, std::string>(key2, val2));
   ASSERT_EQ(metadata, spouse.GetInitialMetadata());
 }
 
 TEST(ServerContextTestSpouseTest, TrailingMetadata) {
   grpc::ServerContext context;
   grpc::testing::ServerContextTestSpouse spouse(&context);
-  std::multimap<grpc::string, grpc::string> metadata;
+  std::multimap<std::string, std::string> metadata;
 
   context.AddTrailingMetadata(key1, val1);
-  metadata.insert(std::pair<grpc::string, grpc::string>(key1, val1));
+  metadata.insert(std::pair<std::string, std::string>(key1, val1));
   ASSERT_EQ(metadata, spouse.GetTrailingMetadata());
 
   context.AddTrailingMetadata(key2, val2);
-  metadata.insert(std::pair<grpc::string, grpc::string>(key2, val2));
+  metadata.insert(std::pair<std::string, std::string>(key2, val2));
   ASSERT_EQ(metadata, spouse.GetTrailingMetadata());
 }
 

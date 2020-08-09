@@ -12,14 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-cimport cpython
-
 
 cdef class Call:
 
   def __cinit__(self):
     # Create an *empty* call
-    grpc_init()
+    fork_handlers_and_grpc_init()
     self.c_call = NULL
     self.references = []
 
@@ -85,12 +83,15 @@ cdef class Call:
     return result
 
   def __dealloc__(self):
-    if self.c_call != NULL:
-      grpc_call_unref(self.c_call)
-    grpc_shutdown()
+    with nogil:
+      if self.c_call != NULL:
+        grpc_call_unref(self.c_call)
+      grpc_shutdown_blocking()
 
   # The object *should* always be valid from Python. Used for debugging.
   @property
   def is_valid(self):
     return self.c_call != NULL
 
+  def _custom_op_on_c_call(self, int op):
+    return _custom_op_on_c_call(op, self.c_call)

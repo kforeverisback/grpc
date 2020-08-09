@@ -34,10 +34,11 @@
 #include <grpcpp/server_context.h>
 #include <grpcpp/support/config.h>
 
-#include "src/core/lib/gpr/host_port.h"
+#include "src/core/lib/gprpp/host_port.h"
 #include "src/core/lib/surface/completion_queue.h"
-#include "src/proto/grpc/testing/services.grpc.pb.h"
+#include "src/proto/grpc/testing/benchmark_service.grpc.pb.h"
 #include "test/core/util/test_config.h"
+#include "test/cpp/qps/qps_server_builder.h"
 #include "test/cpp/qps/server.h"
 
 namespace grpc {
@@ -74,19 +75,18 @@ class AsyncQpsServerTest final : public grpc::testing::Server {
                                  ResponseType*)>
           process_rpc)
       : Server(config) {
-    ServerBuilder builder;
+    std::unique_ptr<ServerBuilder> builder = CreateQpsServerBuilder();
 
     auto port_num = port();
     // Negative port number means inproc server, so no listen port needed
     if (port_num >= 0) {
-      char* server_address = nullptr;
-      gpr_join_host_port(&server_address, "::", port_num);
-      builder.AddListeningPort(server_address,
-                               Server::CreateServerCredentials(config));
-      gpr_free(server_address);
+      std::string server_address = grpc_core::JoinHostPort("::", port_num);
+      builder->AddListeningPort(server_address.c_str(),
+                                Server::CreateServerCredentials(config),
+                                &port_num);
     }
 
-    register_service(&builder, &async_service_);
+    register_service(builder.get(), &async_service_);
 
     int num_threads = config.async_server_threads();
     if (num_threads <= 0) {  // dynamic sizing
@@ -97,15 +97,20 @@ class AsyncQpsServerTest final : public grpc::testing::Server {
     int tpc = std::max(1, config.threads_per_cq());  // 1 if unspecified
     int num_cqs = (num_threads + tpc - 1) / tpc;     // ceiling operator
     for (int i = 0; i < num_cqs; i++) {
-      srv_cqs_.emplace_back(builder.AddCompletionQueue());
+      srv_cqs_.emplace_back(builder->AddCompletionQueue());
     }
     for (int i = 0; i < num_threads; i++) {
       cq_.emplace_back(i % srv_cqs_.size());
     }
 
-    ApplyConfigToBuilder(config, &builder);
+    ApplyConfigToBuilder(config, builder.get());
 
-    server_ = builder.BuildAndStart();
+    server_ = builder->BuildAndStart();
+    if (server_ == nullptr) {
+      gpr_log(GPR_ERROR, "Server: Fail to BuildAndStart(port=%d)", port_num);
+    } else {
+      gpr_log(GPR_INFO, "Server: BuildAndStart(port=%d)", port_num);
+    }
 
     auto process_rpc_bound =
         std::bind(process_rpc, config.payload_config(), std::placeholders::_1,
@@ -162,7 +167,10 @@ class AsyncQpsServerTest final : public grpc::testing::Server {
       std::lock_guard<std::mutex> lock((*ss)->mutex);
       (*ss)->shutdown = true;
     }
-    std::thread shutdown_thread(&AsyncQpsServerTest::ShutdownThreadFunc, this);
+    // TODO(vjpai): Remove the following deadline and allow full proper
+    // shutdown.
+    server_->Shutdown(std::chrono::system_clock::now() +
+                      std::chrono::seconds(3));
     for (auto cq = srv_cqs_.begin(); cq != srv_cqs_.end(); ++cq) {
       (*cq)->Shutdown();
     }
@@ -175,7 +183,6 @@ class AsyncQpsServerTest final : public grpc::testing::Server {
       while ((*cq)->Next(&got_tag, &ok))
         ;
     }
-    shutdown_thread.join();
   }
 
   int GetPollCount() override {
@@ -192,12 +199,6 @@ class AsyncQpsServerTest final : public grpc::testing::Server {
   }
 
  private:
-  void ShutdownThreadFunc() {
-    // TODO (vpai): Remove this deadline and allow Shutdown to finish properly
-    auto deadline = std::chrono::system_clock::now() + std::chrono::seconds(3);
-    server_->Shutdown(deadline);
-  }
-
   void ThreadFunc(int thread_idx) {
     // Wait until work is available or we are shutting down
     bool ok;
@@ -365,7 +366,7 @@ class AsyncQpsServerTest final : public grpc::testing::Server {
       }
       return true;
     }
-    bool finish_done(bool ok) { return false; /* reset the context */ }
+    bool finish_done(bool /*ok*/) { return false; /*reset the context*/ }
 
     std::unique_ptr<ServerContextType> srv_ctx_;
     RequestType req_;
@@ -434,7 +435,7 @@ class AsyncQpsServerTest final : public grpc::testing::Server {
       }
       return true;
     }
-    bool finish_done(bool ok) { return false; /* reset the context */ }
+    bool finish_done(bool /*ok*/) { return false; /*reset the context*/ }
 
     std::unique_ptr<ServerContextType> srv_ctx_;
     RequestType req_;
@@ -502,7 +503,7 @@ class AsyncQpsServerTest final : public grpc::testing::Server {
       }
       return true;
     }
-    bool finish_done(bool ok) { return false; /* reset the context */ }
+    bool finish_done(bool /*ok*/) { return false; /*reset the context*/ }
 
     std::unique_ptr<ServerContextType> srv_ctx_;
     RequestType req_;
@@ -561,6 +562,7 @@ static Status ProcessGenericRPC(const PayloadConfig& payload_config,
   request->Clear();
   int resp_size = payload_config.bytebuf_params().resp_size();
   std::unique_ptr<char[]> buf(new char[resp_size]);
+  memset(buf.get(), 0, static_cast<size_t>(resp_size));
   Slice slice(buf.get(), resp_size);
   *response = ByteBuffer(&slice, 1);
   return Status::OK;

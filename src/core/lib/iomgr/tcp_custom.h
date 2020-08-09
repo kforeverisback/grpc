@@ -24,6 +24,9 @@
 #include "src/core/lib/iomgr/endpoint.h"
 #include "src/core/lib/iomgr/sockaddr.h"
 
+// Same number as the micro of SO_REUSEPORT in kernel
+#define GRPC_CUSTOM_SOCKET_OPT_SO_REUSEPORT (0x00000200u)
+
 typedef struct grpc_tcp_listener grpc_tcp_listener;
 typedef struct grpc_custom_tcp_connect grpc_custom_tcp_connect;
 
@@ -62,8 +65,6 @@ typedef struct grpc_socket_vtable {
                              const grpc_sockaddr* addr, int* len);
   grpc_error* (*getsockname)(grpc_custom_socket* socket,
                              const grpc_sockaddr* addr, int* len);
-  grpc_error* (*setsockopt)(grpc_custom_socket* socket, int level, int optname,
-                            const void* optval, uint32_t optlen);
   grpc_error* (*bind)(grpc_custom_socket* socket, const grpc_sockaddr* addr,
                       size_t len, int flags);
   grpc_error* (*listen)(grpc_custom_socket* socket);
@@ -78,6 +79,6 @@ void grpc_custom_close_server_callback(grpc_tcp_listener* listener);
 
 grpc_endpoint* custom_tcp_endpoint_create(grpc_custom_socket* socket,
                                           grpc_resource_quota* resource_quota,
-                                          char* peer_string);
+                                          const char* peer_string);
 
 #endif /* GRPC_CORE_LIB_IOMGR_TCP_CUSTOM_H */

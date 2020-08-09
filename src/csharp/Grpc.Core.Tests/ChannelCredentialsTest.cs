@@ -17,13 +17,7 @@
 #endregion
 
 using System;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Threading;
-using System.Threading.Tasks;
-using Grpc.Core;
 using Grpc.Core.Internal;
-using Grpc.Core.Utils;
 using NUnit.Framework;
 
 namespace Grpc.Core.Tests
@@ -44,9 +38,20 @@ namespace Grpc.Core.Tests
 
             Assert.Throws(typeof(ArgumentNullException), () => ChannelCredentials.Create(null, new FakeCallCredentials()));
             Assert.Throws(typeof(ArgumentNullException), () => ChannelCredentials.Create(new FakeChannelCredentials(true), null));
-            
+
             // forbid composing non-composable
-            Assert.Throws(typeof(ArgumentException), () => ChannelCredentials.Create(new FakeChannelCredentials(false), new FakeCallCredentials()));
+            var ex = Assert.Throws(typeof(ArgumentException), () => ChannelCredentials.Create(new FakeChannelCredentials(false), new FakeCallCredentials()));
+            Assert.AreEqual("CallCredentials can't be composed with FakeChannelCredentials. CallCredentials must be used with secure channel credentials like SslCredentials.", ex.Message);
+        }
+
+        [Test]
+        public void ChannelCredentials_NativeCredentialsAreReused()
+        {
+            // always returning the same native object is critical for subchannel sharing to work with secure channels
+            var creds = new SslCredentials();
+            var nativeCreds1 = creds.ToNativeCredentials();
+            var nativeCreds2 = creds.ToNativeCredentials();
+            Assert.AreSame(nativeCreds1, nativeCreds2);
         }
     }
 }

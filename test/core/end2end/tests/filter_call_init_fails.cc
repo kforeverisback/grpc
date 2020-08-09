@@ -117,11 +117,9 @@ static void test_server_channel_filter(grpc_end2end_test_config config) {
   grpc_slice details;
 
   gpr_timespec deadline = five_seconds_from_now();
-  c = grpc_channel_create_call(
-      f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
-      grpc_slice_from_static_string("/foo"),
-      get_host_override_slice("foo.test.google.fr:1234", config), deadline,
-      nullptr);
+  c = grpc_channel_create_call(f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
+                               grpc_slice_from_static_string("/foo"), nullptr,
+                               deadline, nullptr);
   GPR_ASSERT(c);
 
   grpc_metadata_array_init(&initial_metadata_recv);
@@ -213,11 +211,9 @@ static void test_client_channel_filter(grpc_end2end_test_config config) {
   grpc_call_error error;
   grpc_slice details;
 
-  c = grpc_channel_create_call(
-      f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
-      grpc_slice_from_static_string("/foo"),
-      get_host_override_slice("foo.test.google.fr:1234", config), deadline,
-      nullptr);
+  c = grpc_channel_create_call(f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
+                               grpc_slice_from_static_string("/foo"), nullptr,
+                               deadline, nullptr);
   GPR_ASSERT(c);
 
   grpc_metadata_array_init(&initial_metadata_recv);
@@ -304,11 +300,9 @@ static void test_client_subchannel_filter(grpc_end2end_test_config config) {
   grpc_call_error error;
   grpc_slice details;
 
-  c = grpc_channel_create_call(
-      f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
-      grpc_slice_from_static_string("/foo"),
-      get_host_override_slice("foo.test.google.fr:1234", config), deadline,
-      nullptr);
+  c = grpc_channel_create_call(f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
+                               grpc_slice_from_static_string("/foo"), nullptr,
+                               deadline, nullptr);
   GPR_ASSERT(c);
 
   grpc_metadata_array_init(&initial_metadata_recv);
@@ -364,11 +358,9 @@ static void test_client_subchannel_filter(grpc_end2end_test_config config) {
   grpc_slice_unref(details);
   details = grpc_empty_slice();
 
-  c = grpc_channel_create_call(
-      f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
-      grpc_slice_from_static_string("/foo"),
-      get_host_override_slice("foo.test.google.fr:1234", config), deadline,
-      nullptr);
+  c = grpc_channel_create_call(f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
+                               grpc_slice_from_static_string("/foo"), nullptr,
+                               deadline, nullptr);
   GPR_ASSERT(c);
 
   error = grpc_call_start_batch(c, ops, static_cast<size_t>(op - ops), tag(2),
@@ -402,23 +394,23 @@ static void test_client_subchannel_filter(grpc_end2end_test_config config) {
  * Test filter - always fails to initialize a call
  */
 
-static grpc_error* init_call_elem(grpc_call_element* elem,
-                                  const grpc_call_element_args* args) {
+static grpc_error* init_call_elem(grpc_call_element* /*elem*/,
+                                  const grpc_call_element_args* /*args*/) {
   return grpc_error_set_int(
       GRPC_ERROR_CREATE_FROM_STATIC_STRING("access denied"),
       GRPC_ERROR_INT_GRPC_STATUS, GRPC_STATUS_PERMISSION_DENIED);
 }
 
-static void destroy_call_elem(grpc_call_element* elem,
-                              const grpc_call_final_info* final_info,
-                              grpc_closure* ignored) {}
+static void destroy_call_elem(grpc_call_element* /*elem*/,
+                              const grpc_call_final_info* /*final_info*/,
+                              grpc_closure* /*ignored*/) {}
 
-static grpc_error* init_channel_elem(grpc_channel_element* elem,
-                                     grpc_channel_element_args* args) {
+static grpc_error* init_channel_elem(grpc_channel_element* /*elem*/,
+                                     grpc_channel_element_args* /*args*/) {
   return GRPC_ERROR_NONE;
 }
 
-static void destroy_channel_elem(grpc_channel_element* elem) {}
+static void destroy_channel_elem(grpc_channel_element* /*elem*/) {}
 
 static const grpc_channel_filter test_filter = {
     grpc_call_next_op,
@@ -438,7 +430,7 @@ static const grpc_channel_filter test_filter = {
  */
 
 static bool maybe_add_server_channel_filter(grpc_channel_stack_builder* builder,
-                                            void* arg) {
+                                            void* /*arg*/) {
   if (g_enable_server_channel_filter) {
     // Want to add the filter as close to the end as possible, to make
     // sure that all of the filters work well together.  However, we
@@ -457,7 +449,7 @@ static bool maybe_add_server_channel_filter(grpc_channel_stack_builder* builder,
 }
 
 static bool maybe_add_client_channel_filter(grpc_channel_stack_builder* builder,
-                                            void* arg) {
+                                            void* /*arg*/) {
   if (g_enable_client_channel_filter) {
     // Want to add the filter as close to the end as possible, to make
     // sure that all of the filters work well together.  However, we
@@ -476,7 +468,7 @@ static bool maybe_add_client_channel_filter(grpc_channel_stack_builder* builder,
 }
 
 static bool maybe_add_client_subchannel_filter(
-    grpc_channel_stack_builder* builder, void* arg) {
+    grpc_channel_stack_builder* builder, void* /*arg*/) {
   if (g_enable_client_subchannel_filter) {
     // Want to add the filter as close to the end as possible, to make
     // sure that all of the filters work well together.  However, we
@@ -516,7 +508,15 @@ void filter_call_init_fails(grpc_end2end_test_config config) {
   g_enable_client_channel_filter = true;
   test_client_channel_filter(config);
   g_enable_client_channel_filter = false;
-  if (config.feature_mask & FEATURE_MASK_SUPPORTS_CLIENT_CHANNEL) {
+  // If the client handshake completes before the server handshake and the
+  // client is able to send application data before the server handshake
+  // completes, then testing the CLIENT_SUBCHANNEL filter will cause the server
+  // to hang waiting for the final handshake message from the client. This
+  // handshake message will never arrive because it would have been sent with
+  // the first application data message, which failed because of the filter.
+  if ((config.feature_mask & FEATURE_MASK_SUPPORTS_CLIENT_CHANNEL) &&
+      !(config.feature_mask &
+        FEATURE_MASK_DOES_NOT_SUPPORT_CLIENT_HANDSHAKE_COMPLETE_FIRST)) {
     gpr_log(GPR_INFO, "Testing CLIENT_SUBCHANNEL filter.");
     g_enable_client_subchannel_filter = true;
     test_client_subchannel_filter(config);

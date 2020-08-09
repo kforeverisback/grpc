@@ -1,9 +1,14 @@
 # How to contribute
 
-We definitely welcome your patches and contributions to gRPC!
+We definitely welcome your patches and contributions to gRPC! Please read the gRPC
+organization's [governance rules](https://github.com/grpc/grpc-community/blob/master/governance.md)
+and [contribution guidelines](https://github.com/grpc/grpc-community/blob/master/CONTRIBUTING.md) before proceeding.
 
 If you are new to github, please start by reading [Pull Request
 howto](https://help.github.com/articles/about-pull-requests/)
+
+If you are looking for features to work on, please filter the issues list with the label ["disposition/help wanted"](https://github.com/grpc/grpc/issues?q=label%3A%22disposition%2Fhelp+wanted%22).
+Please note that some of these feature requests might have been closed in the past as a result of them being marked as stale due to there being no activity, but these are still valid feature requests.
 
 ## Legal requirements
 
@@ -11,13 +16,34 @@ In order to protect both you and ourselves, you will need to sign the
 [Contributor License
 Agreement](https://identity.linuxfoundation.org/projects/cncf).
 
-## Running tests
+## Cloning the repository
 
-Use `tools/run_tests/run_tests.py` script to run the unit tests.  See
-[tools/run_tests](tools/run_tests) for how to run tests for a given language.
+Before starting any development work you will need a local copy of the gRPC repository.
+Please follow the instructions in [Building gRPC C++: Clone the repository](BUILDING.md#clone-the-repository-including-submodules).
 
-Prerequisites for building and running tests are listed in
-[INSTALL.md](INSTALL.md) and in `src/YOUR-LANGUAGE` (e.g. `src/csharp`)
+## Building & Running tests
+
+Different languages use different build systems. To hide the complexity
+of needing to build with many different build systems, a portable python
+script that unifies the experience of building and testing gRPC in different
+languages and on different platforms is provided.
+
+To build gRPC in the language of choice (e.g. `c++`, `csharp`, `php`, `python`, `ruby`, ...)
+- Prepare your development environment based on language-specific instructions in `src/YOUR-LANGUAGE` directory.
+- The language-specific instructions might involve installing C/C++ prerequisites listed in
+  [Building gRPC C++: Prerequisites](BUILDING.md#pre-requisites). This is because gRPC implementations
+  in this repository are using the native gRPC "core" library internally.
+- Run
+  ```
+  python tools/run_tests/run_tests.py -l YOUR_LANGUAGE --build_only
+  ```
+- To also run all the unit tests after building
+  ```
+  python tools/run_tests/run_tests.py -l YOUR_LANGUAGE
+  ```
+
+You can also run `python tools/run_tests/run_tests.py --help` to discover useful command line flags supported. For more details,
+see [tools/run_tests](tools/run_tests) where you will also find guidance on how to run various other test suites (e.g. interop tests, benchmarks).
 
 ## Generated project files
 
@@ -49,6 +75,10 @@ How to get your contributions merged smoothly and quickly.
 - Don't fix code style and formatting unless you are already changing that line
   to address an issue.  PRs with irrelevant changes won't be merged.  If you do
   want to fix formatting or style, do that in a separate PR.
+
+- If you are adding a new file, make sure it has the copyright message template
+  at the top as a comment. You can copy over the message from an existing file
+  and update the year.
  
 - Unless your PR is trivial, you should expect there will be reviewer comments
   that you'll need to address before merging.  We expect you to be reasonably
@@ -60,7 +90,7 @@ How to get your contributions merged smoothly and quickly.
   copyright holder for the contribution (yourself, if you are signing the
   individual CLA, or your company, for corporate CLAs) in the same PR as your
   contribution.  This needs to be done only once, for each company, or
-  individual.
+  individual. Please keep this file in alphabetical order.
  
 - Maintain **clean commit history** and use **meaningful commit messages**.
   PRs with messy commit history are difficult to review and won't be merged.
@@ -89,5 +119,16 @@ How to get your contributions merged smoothly and quickly.
 - Exceptions to the rules can be made if there's a compelling reason for doing
   so.
 
+## Obtaining Commit Access
+We grant Commit Access to contributors based on the following criteria:
+* Sustained contribution to the gRPC project.
+* Deep understanding of the areas contributed to, and good consideration of various reliability, usability and performance tradeoffs. 
+* Contributions demonstrate that obtaining Commit Access will significantly reduce friction for the contributors or others. 
 
+In addition to submitting PRs, a Contributor with Commit Access can:
+* Review PRs and merge once other checks and criteria pass.
+* Triage bugs and PRs and assign appropriate labels and reviewers. 
+
+### Obtaining Commit Access without Code Contributions 
+The [gRPC organization](https://github.com/grpc) is comprised of multiple repositories and commit access is usually restricted to one or more of these repositories. Some repositories such as the [grpc.github.io](https://github.com/grpc/grpc.github.io/) do not have code, but the same principle of sustained, high quality contributions, with a good understanding of the fundamentals, apply. 
 

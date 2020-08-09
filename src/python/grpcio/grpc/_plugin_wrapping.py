@@ -20,6 +20,8 @@ import grpc
 from grpc import _common
 from grpc._cython import cygrpc
 
+_LOGGER = logging.getLogger(__name__)
+
 
 class _AuthMetadataContext(
         collections.namedtuple('AuthMetadataContext', (
@@ -68,15 +70,14 @@ class _Plugin(object):
         self._metadata_plugin = metadata_plugin
 
     def __call__(self, service_url, method_name, callback):
-        context = _AuthMetadataContext(
-            _common.decode(service_url), _common.decode(method_name))
+        context = _AuthMetadataContext(_common.decode(service_url),
+                                       _common.decode(method_name))
         callback_state = _CallbackState()
         try:
-            self._metadata_plugin(context,
-                                  _AuthMetadataPluginCallback(
-                                      callback_state, callback))
+            self._metadata_plugin(
+                context, _AuthMetadataPluginCallback(callback_state, callback))
         except Exception as exception:  # pylint: disable=broad-except
-            logging.exception(
+            _LOGGER.exception(
                 'AuthMetadataPluginCallback "%s" raised exception!',
                 self._metadata_plugin)
             with callback_state.lock:
@@ -96,5 +97,5 @@ def metadata_plugin_call_credentials(metadata_plugin, name):
     else:
         effective_name = name
     return grpc.CallCredentials(
-        cygrpc.MetadataPluginCallCredentials(
-            _Plugin(metadata_plugin), _common.encode(effective_name)))
+        cygrpc.MetadataPluginCallCredentials(_Plugin(metadata_plugin),
+                                             _common.encode(effective_name)))

@@ -26,6 +26,7 @@
 #include "src/core/tsi/alts/zero_copy_frame_protector/alts_grpc_record_protocol.h"
 #include "src/core/tsi/alts/zero_copy_frame_protector/alts_iovec_record_protocol.h"
 #include "test/core/tsi/alts/crypt/gsec_test_util.h"
+#include "test/core/util/test_config.h"
 
 constexpr size_t kMaxSliceLength = 256;
 constexpr size_t kMaxSlices = 10;
@@ -109,7 +110,7 @@ static void alter_random_byte(grpc_slice_buffer* sb) {
 }
 
 static alts_grpc_record_protocol_test_fixture*
-test_fixture_integrity_only_create(bool rekey) {
+test_fixture_integrity_only_create(bool rekey, bool extra_copy) {
   alts_grpc_record_protocol_test_fixture* fixture =
       static_cast<alts_grpc_record_protocol_test_fixture*>(
           gpr_zalloc(sizeof(alts_grpc_record_protocol_test_fixture)));
@@ -124,41 +125,46 @@ test_fixture_integrity_only_create(bool rekey) {
                  &crypter, nullptr) == GRPC_STATUS_OK);
   GPR_ASSERT(alts_grpc_integrity_only_record_protocol_create(
                  crypter, 8, /*is_client=*/true, /*is_protect=*/true,
-                 &fixture->client_protect) == TSI_OK);
+                 extra_copy, &fixture->client_protect) == TSI_OK);
   /* Create client record protocol for unprotect.  */
   GPR_ASSERT(gsec_aes_gcm_aead_crypter_create(
                  key, key_length, kAesGcmNonceLength, kAesGcmTagLength, rekey,
                  &crypter, nullptr) == GRPC_STATUS_OK);
   GPR_ASSERT(alts_grpc_integrity_only_record_protocol_create(
                  crypter, 8, /*is_client=*/true, /*is_protect=*/false,
-                 &fixture->client_unprotect) == TSI_OK);
+                 extra_copy, &fixture->client_unprotect) == TSI_OK);
   /* Create server record protocol for protect.  */
   GPR_ASSERT(gsec_aes_gcm_aead_crypter_create(
                  key, key_length, kAesGcmNonceLength, kAesGcmTagLength, rekey,
                  &crypter, nullptr) == GRPC_STATUS_OK);
   GPR_ASSERT(alts_grpc_integrity_only_record_protocol_create(
                  crypter, 8, /*is_client=*/false, /*is_protect=*/true,
-                 &fixture->server_protect) == TSI_OK);
+                 extra_copy, &fixture->server_protect) == TSI_OK);
   /* Create server record protocol for unprotect.  */
   GPR_ASSERT(gsec_aes_gcm_aead_crypter_create(
                  key, key_length, kAesGcmNonceLength, kAesGcmTagLength, rekey,
                  &crypter, nullptr) == GRPC_STATUS_OK);
   GPR_ASSERT(alts_grpc_integrity_only_record_protocol_create(
                  crypter, 8, /*is_client=*/false, /*is_protect=*/false,
-                 &fixture->server_unprotect) == TSI_OK);
+                 extra_copy, &fixture->server_unprotect) == TSI_OK);
 
   gpr_free(key);
   return fixture;
 }
 
 static alts_grpc_record_protocol_test_fixture*
-test_fixture_integrity_only_no_rekey_create() {
-  return test_fixture_integrity_only_create(false);
+test_fixture_integrity_only_no_rekey_no_extra_copy_create() {
+  return test_fixture_integrity_only_create(false, false);
 }
 
 static alts_grpc_record_protocol_test_fixture*
 test_fixture_integrity_only_rekey_create() {
-  return test_fixture_integrity_only_create(true);
+  return test_fixture_integrity_only_create(true, false);
+}
+
+static alts_grpc_record_protocol_test_fixture*
+test_fixture_integrity_only_extra_copy_create() {
+  return test_fixture_integrity_only_create(false, true);
 }
 
 static alts_grpc_record_protocol_test_fixture*
@@ -440,11 +446,16 @@ static void alts_grpc_record_protocol_tests(
 }
 
 int main(int argc, char** argv) {
-  alts_grpc_record_protocol_tests(&test_fixture_integrity_only_no_rekey_create);
+  grpc::testing::TestEnvironment env(argc, argv);
+  grpc_init();
+  alts_grpc_record_protocol_tests(
+      &test_fixture_integrity_only_no_rekey_no_extra_copy_create);
   alts_grpc_record_protocol_tests(&test_fixture_integrity_only_rekey_create);
+  alts_grpc_record_protocol_tests(
+      &test_fixture_integrity_only_extra_copy_create);
   alts_grpc_record_protocol_tests(
       &test_fixture_privacy_integrity_no_rekey_create);
   alts_grpc_record_protocol_tests(&test_fixture_privacy_integrity_rekey_create);
-
+  grpc_shutdown();
   return 0;
 }

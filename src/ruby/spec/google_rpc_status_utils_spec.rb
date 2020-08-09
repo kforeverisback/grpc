@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-require 'grpc'
+require 'spec_helper'
 require_relative '../lib/grpc/google_rpc_status_utils'
 require_relative '../pb/src/proto/grpc/testing/messages_pb'
 require_relative '../pb/src/proto/grpc/testing/messages_pb'
@@ -67,7 +67,7 @@ describe 'conversion from a status struct to a google protobuf status' do
     expect(rpc_status).to eq(proto)
   end
 
-  it 'can succesfully convert a status struct into a google protobuf status '\
+  it 'can successfully convert a status struct into a google protobuf status '\
     'when there are no rpcstatus details' do
     proto = Google::Rpc::Status.new(code: 1, message: 'matching message')
     encoded_proto = Google::Rpc::Status.encode(proto)
@@ -79,7 +79,7 @@ describe 'conversion from a status struct to a google protobuf status' do
     expect(out.details).to eq([])
   end
 
-  it 'can succesfully convert a status struct into a google protobuf '\
+  it 'can successfully convert a status struct into a google protobuf '\
     'status when there are multiple rpcstatus details' do
     simple_request_any = Google::Protobuf::Any.new
     simple_request = Grpc::Testing::SimpleRequest.new(
@@ -111,17 +111,6 @@ describe 'conversion from a status struct to a google protobuf status' do
              Grpc::Testing::SimpleResponse)).to eq(simple_response)
     expect(out.details[2].unpack(
              Grpc::Testing::Payload)).to eq(payload)
-  end
-end
-
-# Test message
-class EchoMsg
-  def self.marshal(_o)
-    ''
-  end
-
-  def self.unmarshal(_o)
-    EchoMsg.new
   end
 end
 

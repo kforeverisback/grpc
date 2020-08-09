@@ -16,6 +16,8 @@
  *
  */
 
+#include <grpc/support/port_platform.h>
+
 #include "src/core/lib/security/credentials/alts/check_gcp_environment.h"
 
 #if GPR_LINUX
@@ -67,9 +69,10 @@ static void test_gcp_environment_check_failure() {
   GPR_ASSERT(!check_bios_data_linux_test("Amazon"));
   GPR_ASSERT(!check_bios_data_linux_test("Google-Chrome\t\t"));
   GPR_ASSERT(!check_bios_data_linux_test("Amazon"));
+  GPR_ASSERT(!check_bios_data_linux_test("\n"));
 }
 
-int main(int argc, char** argv) {
+int main(int /*argc*/, char** /*argv*/) {
   /* Tests. */
   test_gcp_environment_check_success();
   test_gcp_environment_check_failure();
@@ -78,6 +81,6 @@ int main(int argc, char** argv) {
 
 #else  // GPR_LINUX
 
-int main(int argc, char** argv) { return 0; }
+int main(int /*argc*/, char** /*argv*/) { return 0; }
 
 #endif  // GPR_LINUX

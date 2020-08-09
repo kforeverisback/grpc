@@ -47,7 +47,8 @@ static void on_finish(void* arg, grpc_error* error) {
       "<body><p>This is a test</p></body></html>";
   grpc_http_response* response = static_cast<grpc_http_response*>(arg);
   GPR_ASSERT(response);
-  gpr_log(GPR_INFO, "response status %d", response->status);
+  gpr_log(GPR_INFO, "response status=%d error=%s", response->status,
+          grpc_error_string(error));
   GPR_ASSERT(response->status == 200);
   GPR_ASSERT(response->body_length == strlen(expect));
   GPR_ASSERT(0 == memcmp(expect, response->body, response->body_length));
@@ -76,7 +77,7 @@ static void test_get(int port) {
   req.handshaker = &grpc_httpcli_plaintext;
 
   grpc_http_response response;
-  memset(&response, 0, sizeof(response));
+  response = {};
   grpc_resource_quota* resource_quota = grpc_resource_quota_create("test_get");
   grpc_httpcli_get(
       &g_context, &g_pops, resource_quota, &req, n_seconds_time(15),
@@ -115,7 +116,7 @@ static void test_post(int port) {
   req.handshaker = &grpc_httpcli_plaintext;
 
   grpc_http_response response;
-  memset(&response, 0, sizeof(response));
+  response = {};
   grpc_resource_quota* resource_quota = grpc_resource_quota_create("test_post");
   grpc_httpcli_post(
       &g_context, &g_pops, resource_quota, &req, "hello", 5, n_seconds_time(15),
@@ -137,14 +138,14 @@ static void test_post(int port) {
   grpc_http_response_destroy(&response);
 }
 
-static void destroy_pops(void* p, grpc_error* error) {
+static void destroy_pops(void* p, grpc_error* /*error*/) {
   grpc_pollset_destroy(
       grpc_polling_entity_pollset(static_cast<grpc_polling_entity*>(p)));
 }
 
 int main(int argc, char** argv) {
   gpr_subprocess* server;
-  grpc_test_init(argc, argv);
+  grpc::testing::TestEnvironment env(argc, argv);
   grpc_init();
   {
     grpc_closure destroyed;

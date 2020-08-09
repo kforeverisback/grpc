@@ -15,43 +15,37 @@
 
 set -ex
 
-# A temporary solution to give Kokoro credentials. 
-# The file name 4321_grpc-testing-service needs to match auth_credential in 
-# the build config.
-mkdir -p ${KOKORO_KEYSTORE_DIR}
-cp ${KOKORO_GFILE_DIR}/GrpcTesting-d0eeee2db331.json ${KOKORO_KEYSTORE_DIR}/4321_grpc-testing-service
-
-temp_dir=$(mktemp -d)
-ln -f "${KOKORO_GFILE_DIR}/bazel-canary" ${temp_dir}/bazel
-chmod 755 "${KOKORO_GFILE_DIR}/bazel-canary"
-export PATH="${temp_dir}:${PATH}"
-# This should show ${temp_dir}/bazel
-which bazel
-chmod +x "${KOKORO_GFILE_DIR}/bazel_wrapper.py"
-
 # change to grpc repo root
 cd $(dirname $0)/../../..
 
 source tools/internal_ci/helper_scripts/prepare_build_linux_rc
 
-# TODO(adelez): implement size for test targets and change test_timeout back
-"${KOKORO_GFILE_DIR}/bazel_wrapper.py" \
-  --host_jvm_args=-Dbazel.DigestFunction=SHA256 \
-  test --jobs="100" \
-  --test_timeout="3600,3600,3600,3600" \
-  --test_output=errors  \
-  --verbose_failures=true  \
-  --keep_going  \
-  --remote_accept_cached=true  \
-  --spawn_strategy=remote  \
-  --remote_local_fallback=false  \
-  --remote_timeout=3600  \
-  --strategy=Javac=remote  \
-  --strategy=Closure=remote  \
-  --genrule_strategy=remote  \
-  --experimental_strict_action_env=true \
-  --experimental_remote_platform_override='properties:{name:"container-image" value:"docker://gcr.io/cloud-marketplace/google/rbe-debian8@sha256:b2d946c1ddc20af250fe85cf98bd648ac5519131659f7c36e64184b433175a33" }' \
-  --crosstool_top=@com_github_bazelbuild_bazeltoolchains//configs/debian8_clang/0.3.0/bazel_0.10.0:toolchain \
-  --define GRPC_PORT_ISOLATED_RUNTIME=1 \
-  $1 \
-  -- //test/...
+# make sure bazel is available
+tools/bazel version
+
+# to get "bazel" link for kokoro build, we need to generate
+# invocation UUID, set a flag for bazel to use it
+# and upload "bazel_invocation_ids" file as artifact.
+BAZEL_INVOCATION_ID="$(uuidgen)"
+echo "${BAZEL_INVOCATION_ID}" >"${KOKORO_ARTIFACTS_DIR}/bazel_invocation_ids"
+
+tools/bazel \
+  --bazelrc=tools/remote_build/kokoro.bazelrc \
+  test \
+  --invocation_id="${BAZEL_INVOCATION_ID}" \
+  --workspace_status_command=tools/remote_build/workspace_status_kokoro.sh \
+  --google_credentials="${KOKORO_GFILE_DIR}/GrpcTesting-d0eeee2db331.json" \
+  $@ \
+  -- //test/... || FAILED="true"
+
+if [ "$UPLOAD_TEST_RESULTS" != "" ]
+then
+  # Sleep to let ResultStore finish writing results before querying
+  sleep 60
+  python ./tools/run_tests/python_utils/upload_rbe_results.py
+fi
+
+if [ "$FAILED" != "" ]
+then
+  exit 1
+fi

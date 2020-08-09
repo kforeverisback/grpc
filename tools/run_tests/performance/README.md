@@ -1,7 +1,7 @@
 # Overview of performance test suite, with steps for manual runs:
 
 For design of the tests, see
-https://grpc.io/docs/guides/benchmarking.html.
+https://grpc.io/docs/guides/benchmarking.
 
 ## Pre-reqs for running these manually:
 In general the benchmark workers and driver build scripts expect
@@ -24,7 +24,7 @@ GCE "worker" machines that are in the same zone.
   * For example, to start the grpc-go benchmark worker:
   [grpc-go worker main.go](https://github.com/grpc/grpc-go/blob/master/benchmark/worker/main.go) --driver_port <driver_port>
 
-#### Comands to start workers in different languages:
+#### Commands to start workers in different languages:
  * Note that these commands are what the top-level
    [run_performance_test.py](../run_performance_tests.py) script uses to
    build and run different workers through the
@@ -48,7 +48,7 @@ $ tools/run_tests/performance/run_worker_<language>.sh
 
 ```
 $ cd <grpc-java-repo>
-$ ./gradlew -PskipCodegen=true :grpc-benchmarks:installDist
+$ ./gradlew -PskipCodegen=true -PskipAndroid=true :grpc-benchmarks:installDist
 $ benchmarks/build/install/grpc-benchmarks/bin/benchmark_worker --driver_port <driver_port>
 ```
 
@@ -104,3 +104,31 @@ Example memory profile of grpc-go server, with `go tools pprof`:
 ```
 $ go tool pprof --text --alloc_space http://localhost:<pprof_port>/debug/heap
 ```
+
+### Configuration environment variables:
+
+* QPS_WORKER_CHANNEL_CONNECT_TIMEOUT
+
+  Consuming process: qps_worker
+
+  Type: integer (number of seconds)
+
+  This can be used to configure the amount of time that benchmark
+  clients wait for channels to the benchmark server to become ready.
+  This is useful in certain benchmark environments in which the
+  server can take a long time to become ready. Note: if setting
+  this to a high value, then the scenario config under test should
+  probably also have a large "warmup_seconds".
+
+* QPS_WORKERS
+
+  Consuming process: qps_json_driver
+
+  Type: comma separated list of host:port
+
+  Set this to a comma separated list of QPS worker processes/machines.
+  Each scenario in a scenario config has specifies a certain number
+  of servers, `num_servers`, and the driver will start
+  "benchmark servers"'s on the first `num_server` `host:port` pairs in
+  the comma separated list. The rest will be told to run as clients
+  against the benchmark server.

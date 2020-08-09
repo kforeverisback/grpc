@@ -207,6 +207,18 @@ class TransportStreamOpBatch {
         op_->payload->context[GRPC_CONTEXT_TRACING].value);
   }
 
+  const gpr_atm* get_peer_string() const {
+    if (op_->send_initial_metadata &&
+        op_->payload->send_initial_metadata.peer_string != nullptr) {
+      return op_->payload->send_initial_metadata.peer_string;
+    } else if (op_->recv_initial_metadata &&
+               op_->payload->recv_initial_metadata.peer_string != nullptr) {
+      return op_->payload->recv_initial_metadata.peer_string;
+    } else {
+      return nullptr;
+    }
+  }
+
  private:
   grpc_transport_stream_op_batch* op_;  // Not owned.
   MetadataBatch send_initial_metadata_;
@@ -224,13 +236,13 @@ class ChannelData {
   // TODO(roth): Come up with a more C++-like API for the channel element.
 
   /// Initializes the channel data.
-  virtual grpc_error* Init(grpc_channel_element* elem,
-                           grpc_channel_element_args* args) {
+  virtual grpc_error* Init(grpc_channel_element* /*elem*/,
+                           grpc_channel_element_args* /*args*/) {
     return GRPC_ERROR_NONE;
   }
 
   // Called before destruction.
-  virtual void Destroy(grpc_channel_element* elem) {}
+  virtual void Destroy(grpc_channel_element* /*elem*/) {}
 
   virtual void StartTransportOp(grpc_channel_element* elem, TransportOp* op);
 
@@ -247,15 +259,15 @@ class CallData {
   // TODO(roth): Come up with a more C++-like API for the call element.
 
   /// Initializes the call data.
-  virtual grpc_error* Init(grpc_call_element* elem,
-                           const grpc_call_element_args* args) {
+  virtual grpc_error* Init(grpc_call_element* /*elem*/,
+                           const grpc_call_element_args* /*args*/) {
     return GRPC_ERROR_NONE;
   }
 
   // Called before destruction.
-  virtual void Destroy(grpc_call_element* elem,
-                       const grpc_call_final_info* final_info,
-                       grpc_closure* then_call_closure) {}
+  virtual void Destroy(grpc_call_element* /*elem*/,
+                       const grpc_call_final_info* /*final_info*/,
+                       grpc_closure* /*then_call_closure*/) {}
 
   /// Starts a new stream operation.
   virtual void StartTransportStreamOpBatch(grpc_call_element* elem,
@@ -354,6 +366,11 @@ void ChannelFilterPluginShutdown();
 /// The \a include_filter argument specifies a function that will be called
 /// to determine at run-time whether or not to add the filter. If the
 /// value is nullptr, the filter will be added unconditionally.
+/// If the channel stack type is GRPC_CLIENT_SUBCHANNEL, the caller should
+/// ensure that subchannels with different filter lists will always have
+/// different channel args. This requires setting a channel arg in case the
+/// registration function relies on some condition other than channel args to
+/// decide whether to add a filter or not.
 template <typename ChannelDataType, typename CallDataType>
 void RegisterChannelFilter(
     const char* name, grpc_channel_stack_type stack_type, int priority,

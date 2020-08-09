@@ -12,13 +12,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("//bazel:grpc_build_system.bzl", "grpc_cc_library", "grpc_cc_test", "grpc_cc_binary", "grpc_package")
+load("//bazel:grpc_build_system.bzl", "grpc_cc_binary", "grpc_cc_library", "grpc_cc_test", "grpc_package")
+load("//bazel:custom_exec_properties.bzl", "LARGE_MACHINE")
 
 licenses(["notice"])  # Apache v2
 
 load("//test/core/util:grpc_fuzzer.bzl", "grpc_fuzzer")
 
-grpc_package(name = "test/core/iomgr", visibility = "public") # Useful for third party devs to test their io manager implementation.
+grpc_package(
+    name = "test/core/iomgr",
+    visibility = "public",
+)  # Useful for third party devs to test their io manager implementation.
 
 grpc_cc_library(
     name = "endpoint_tests",
@@ -29,7 +33,6 @@ grpc_cc_library(
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
 )
@@ -37,11 +40,12 @@ grpc_cc_library(
 grpc_cc_test(
     name = "combiner_test",
     srcs = ["combiner_test.cc"],
+    exec_properties = LARGE_MACHINE,
     language = "C++",
+    tags = ["no_windows"],  # LARGE_MACHINE is not configured for windows RBE
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
 )
@@ -54,7 +58,6 @@ grpc_cc_test(
         ":endpoint_tests",
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
 )
@@ -63,35 +66,35 @@ grpc_cc_test(
     name = "error_test",
     srcs = ["error_test.cc"],
     language = "C++",
+    uses_polling = False,
     deps = [
         ":endpoint_tests",
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
 )
 
 grpc_cc_test(
-    name = "ev_epollsig_linux_test",
-    srcs = ["ev_epollsig_linux_test.cc"],
+    name = "ev_epollex_linux_test",
+    srcs = ["ev_epollex_linux_test.cc"],
+    language = "C++",
+    tags = ["no_windows"],
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
-    language = "C++",
 )
 
 grpc_cc_test(
     name = "fd_conservation_posix_test",
     srcs = ["fd_conservation_posix_test.cc"],
     language = "C++",
+    tags = ["no_windows"],
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
 )
@@ -100,10 +103,21 @@ grpc_cc_test(
     name = "fd_posix_test",
     srcs = ["fd_posix_test.cc"],
     language = "C++",
+    tags = ["no_windows"],
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
+        "//test/core/util:grpc_test_util",
+    ],
+)
+
+grpc_cc_test(
+    name = "grpc_ipv6_loopback_available_test",
+    srcs = ["grpc_ipv6_loopback_available_test.cc"],
+    language = "C++",
+    deps = [
+        "//:gpr",
+        "//:grpc",
         "//test/core/util:grpc_test_util",
     ],
 )
@@ -112,46 +126,98 @@ grpc_cc_test(
     name = "load_file_test",
     srcs = ["load_file_test.cc"],
     language = "C++",
+    uses_polling = False,
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
 )
 
 grpc_cc_test(
-    name = "pollset_set_test",
-    srcs = ["pollset_set_test.cc"],
+    name = "work_serializer_test",
+    srcs = ["work_serializer_test.cc"],
+    exec_properties = LARGE_MACHINE,
+    external_deps = [
+        "gtest",
+    ],
     language = "C++",
+    tags = [
+        "no_windows",  # LARGE_MACHINE is not configured for windows RBE
+    ],
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
 )
 
 grpc_cc_test(
-    name = "resolve_address_posix_test",
+    name = "mpmcqueue_test",
+    srcs = ["mpmcqueue_test.cc"],
+    language = "C++",
+    uses_polling = False,
+    deps = [
+        "//:gpr",
+        "//:grpc",
+        "//test/core/util:grpc_test_util",
+    ],
+)
+
+grpc_cc_test(
+    name = "resolve_address_using_ares_resolver_posix_test",
     srcs = ["resolve_address_posix_test.cc"],
+    args = [
+        "--resolver=ares",
+    ],
     language = "C++",
+    tags = ["no_windows"],
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
 )
 
 grpc_cc_test(
-    name = "resolve_address_test",
+    name = "resolve_address_using_native_resolver_posix_test",
+    srcs = ["resolve_address_posix_test.cc"],
+    args = [
+        "--resolver=native",
+    ],
+    language = "C++",
+    tags = ["no_windows"],
+    deps = [
+        "//:gpr",
+        "//:grpc",
+        "//test/core/util:grpc_test_util",
+    ],
+)
+
+grpc_cc_test(
+    name = "resolve_address_using_ares_resolver_test",
     srcs = ["resolve_address_test.cc"],
+    args = [
+        "--resolver=ares",
+    ],
     language = "C++",
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
+        "//test/core/util:grpc_test_util",
+    ],
+)
+
+grpc_cc_test(
+    name = "resolve_address_using_native_resolver_test",
+    srcs = ["resolve_address_test.cc"],
+    args = [
+        "--resolver=native",
+    ],
+    language = "C++",
+    deps = [
+        "//:gpr",
+        "//:grpc",
         "//test/core/util:grpc_test_util",
     ],
 )
@@ -163,7 +229,6 @@ grpc_cc_test(
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
 )
@@ -175,7 +240,6 @@ grpc_cc_test(
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
 )
@@ -184,10 +248,10 @@ grpc_cc_test(
     name = "socket_utils_test",
     srcs = ["socket_utils_test.cc"],
     language = "C++",
+    tags = ["no_windows"],
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
 )
@@ -196,10 +260,10 @@ grpc_cc_test(
     name = "tcp_client_posix_test",
     srcs = ["tcp_client_posix_test.cc"],
     language = "C++",
+    tags = ["no_windows"],
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
 )
@@ -208,11 +272,25 @@ grpc_cc_test(
     name = "tcp_posix_test",
     srcs = ["tcp_posix_test.cc"],
     language = "C++",
+    tags = [
+        "no_mac",  # TODO(jtattermusch): Reenable once https://github.com/grpc/grpc/issues/21282 is fixed.
+        "no_windows",
+    ],
     deps = [
         ":endpoint_tests",
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
+        "//test/core/util:grpc_test_util",
+    ],
+)
+
+grpc_cc_test(
+    name = "buffer_list_test",
+    srcs = ["buffer_list_test.cc"],
+    language = "C++",
+    deps = [
+        "//:gpr",
+        "//:grpc",
         "//test/core/util:grpc_test_util",
     ],
 )
@@ -221,10 +299,22 @@ grpc_cc_test(
     name = "tcp_server_posix_test",
     srcs = ["tcp_server_posix_test.cc"],
     language = "C++",
+    tags = ["no_windows"],
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
+        "//test/core/util:grpc_test_util",
+    ],
+)
+
+grpc_cc_test(
+    name = "threadpool_test",
+    srcs = ["threadpool_test.cc"],
+    language = "C++",
+    uses_polling = False,
+    deps = [
+        "//:gpr",
+        "//:grpc",
         "//test/core/util:grpc_test_util",
     ],
 )
@@ -233,10 +323,10 @@ grpc_cc_test(
     name = "time_averaged_stats_test",
     srcs = ["time_averaged_stats_test.cc"],
     language = "C++",
+    uses_polling = False,
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
 )
@@ -245,10 +335,10 @@ grpc_cc_test(
     name = "timer_heap_test",
     srcs = ["timer_heap_test.cc"],
     language = "C++",
+    uses_polling = False,
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
 )
@@ -257,10 +347,10 @@ grpc_cc_test(
     name = "timer_list_test",
     srcs = ["timer_list_test.cc"],
     language = "C++",
+    uses_polling = False,
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
 )
@@ -269,22 +359,31 @@ grpc_cc_test(
     name = "udp_server_test",
     srcs = ["udp_server_test.cc"],
     language = "C++",
+    tags = ["no_windows"],
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
         "//test/core/util:grpc_test_util",
     ],
 )
 
 grpc_cc_test(
-    name = "wakeup_fd_cv_test",
-    srcs = ["wakeup_fd_cv_test.cc"],
+    name = "stranded_event_test",
+    srcs = ["stranded_event_test.cc"],
+    external_deps = [
+        "gtest",
+    ],
     language = "C++",
+    tags = [
+        # TODO(apolcyn): This test is failing on Windows at entry, enable once passing.
+        # See e.g. https://source.cloud.google.com/results/invocations/03e2c2bc-1742-48b4-a33d-b4cdaee5c8f9/targets
+        # E0717 23:43:56.391000000  5488 src/core/lib/surface/server.cc:1630] assertion failed: server->listeners_destroyed == server->listeners.size()
+        "no_windows",
+    ],
     deps = [
         "//:gpr",
         "//:grpc",
-        "//test/core/util:gpr_test_util",
+        "//test/core/end2end:cq_verifier",
         "//test/core/util:grpc_test_util",
     ],
 )

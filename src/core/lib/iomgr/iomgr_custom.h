@@ -37,7 +37,9 @@ extern gpr_thd_id g_init_thread;
   GPR_ASSERT(gpr_thd_currentid() == g_init_thread)
 #else
 #define GRPC_CUSTOM_IOMGR_ASSERT_SAME_THREAD()
-#endif /* GRPC_UV_THREAD_CHECK */
+#endif /* GRPC_CUSTOM_IOMGR_THREAD_CHECK */
+
+extern bool g_custom_iomgr_enabled;
 
 void grpc_custom_iomgr_init(grpc_socket_vtable* socket,
                             grpc_custom_resolver_vtable* resolver,

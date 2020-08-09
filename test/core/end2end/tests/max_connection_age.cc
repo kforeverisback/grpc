@@ -109,11 +109,9 @@ static void test_max_age_forcibly_close(grpc_end2end_test_config config) {
   grpc_slice details;
   int was_cancelled = 2;
 
-  c = grpc_channel_create_call(
-      f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
-      grpc_slice_from_static_string("/foo"),
-      get_host_override_slice("foo.test.google.fr:1234", config), deadline,
-      nullptr);
+  c = grpc_channel_create_call(f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
+                               grpc_slice_from_static_string("/foo"), nullptr,
+                               deadline, nullptr);
   GPR_ASSERT(c);
 
   grpc_metadata_array_init(&initial_metadata_recv);
@@ -206,10 +204,8 @@ static void test_max_age_forcibly_close(grpc_end2end_test_config config) {
 
   /* The connection should be closed immediately after the max age grace period,
      the in-progress RPC should fail. */
-  GPR_ASSERT(status == GRPC_STATUS_INTERNAL);
+  GPR_ASSERT(status == GRPC_STATUS_UNAVAILABLE);
   GPR_ASSERT(0 == grpc_slice_str_cmp(call_details.method, "/foo"));
-  validate_host_override_string("foo.test.google.fr:1234", call_details.host,
-                                config);
   GPR_ASSERT(was_cancelled == 1);
 
   grpc_slice_unref(details);
@@ -255,11 +251,9 @@ static void test_max_age_gracefully_close(grpc_end2end_test_config config) {
   grpc_slice details;
   int was_cancelled = 2;
 
-  c = grpc_channel_create_call(
-      f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
-      grpc_slice_from_static_string("/foo"),
-      get_host_override_slice("foo.test.google.fr:1234", config), deadline,
-      nullptr);
+  c = grpc_channel_create_call(f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
+                               grpc_slice_from_static_string("/foo"), nullptr,
+                               deadline, nullptr);
   GPR_ASSERT(c);
 
   grpc_metadata_array_init(&initial_metadata_recv);
@@ -348,9 +342,7 @@ static void test_max_age_gracefully_close(grpc_end2end_test_config config) {
   GPR_ASSERT(status == GRPC_STATUS_UNIMPLEMENTED);
   GPR_ASSERT(0 == grpc_slice_str_cmp(details, "xyz"));
   GPR_ASSERT(0 == grpc_slice_str_cmp(call_details.method, "/foo"));
-  validate_host_override_string("foo.test.google.fr:1234", call_details.host,
-                                config);
-  GPR_ASSERT(was_cancelled == 1);
+  GPR_ASSERT(was_cancelled == 0);
 
   grpc_slice_unref(details);
   grpc_metadata_array_destroy(&initial_metadata_recv);

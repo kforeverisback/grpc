@@ -13,8 +13,6 @@
 # limitations under the License.
 """Run a group of subprocesses and then finish."""
 
-from __future__ import print_function
-
 import logging
 import multiprocessing
 import os
@@ -31,7 +29,9 @@ import errno
 measure_cpu_costs = False
 
 _DEFAULT_MAX_JOBS = 16 * multiprocessing.cpu_count()
-_MAX_RESULT_SIZE = 8192
+# Maximum number of bytes of job's stdout that will be stored in the result.
+# Only last N bytes of stdout will be kept if the actual output longer.
+_MAX_RESULT_SIZE = 64 * 1024
 
 
 # NOTE: If you change this, please make sure to test reviewing the
@@ -116,7 +116,7 @@ def eintr_be_gone(fn):
     while True:
         try:
             return fn()
-        except IOError, e:
+        except IOError as e:
             if e.errno != errno.EINTR:
                 raise
 
@@ -135,14 +135,14 @@ def message(tag, msg, explanatory_text=None, do_newline=False):
             else:
                 sys.stdout.write(
                     '%s%s%s\x1b[%d;%dm%s\x1b[0m: %s%s' %
-                    (_BEGINNING_OF_LINE, _CLEAR_LINE, '\n%s' % explanatory_text
-                     if explanatory_text is not None else '',
+                    (_BEGINNING_OF_LINE, _CLEAR_LINE, '\n%s' %
+                     explanatory_text if explanatory_text is not None else '',
                      _COLORS[_TAG_COLOR[tag]][1], _COLORS[_TAG_COLOR[tag]][0],
                      tag, msg, '\n'
                      if do_newline or explanatory_text is not None else ''))
             sys.stdout.flush()
             return
-        except IOError, e:
+        except IOError as e:
             if e.errno != errno.EINTR:
                 raise
 
@@ -174,13 +174,15 @@ class JobSpec(object):
                  timeout_retries=0,
                  kill_handler=None,
                  cpu_cost=1.0,
-                 verbose_success=False):
+                 verbose_success=False,
+                 logfilename=None):
         """
     Arguments:
       cmdline: a list of arguments to pass as the command line
       environ: a dictionary of environment variables to set in the child process
       kill_handler: a handler that will be called whenever job.kill() is invoked
       cpu_cost: number of cores per second this job needs
+      logfilename: use given file to store job's output, rather than using a temporary file
     """
         if environ is None:
             environ = {}
@@ -195,6 +197,11 @@ class JobSpec(object):
         self.kill_handler = kill_handler
         self.cpu_cost = cpu_cost
         self.verbose_success = verbose_success
+        self.logfilename = logfilename
+        if self.logfilename and self.flake_retries != 0 and self.timeout_retries != 0:
+            # Forbidden to avoid overwriting the test log when retrying.
+            raise Exception(
+                'Cannot use custom logfile when retries are enabled')
 
     def identity(self):
         return '%r %r' % (self.cmdline, self.environ)
@@ -211,8 +218,8 @@ class JobSpec(object):
 
     def __str__(self):
         return '%s: %s %s' % (self.shortname, ' '.join(
-            '%s=%s' % kv for kv in self.environ.items()),
-                              ' '.join(self.cmdline))
+            '%s=%s' % kv for kv in self.environ.items()), ' '.join(
+                self.cmdline))
 
 
 class JobResult(object):
@@ -259,7 +266,15 @@ class Job(object):
         return self._spec
 
     def start(self):
-        self._tempfile = tempfile.TemporaryFile()
+        if self._spec.logfilename:
+            # make sure the log directory exists
+            logfile_dir = os.path.dirname(
+                os.path.abspath(self._spec.logfilename))
+            if not os.path.exists(logfile_dir):
+                os.makedirs(logfile_dir)
+            self._logfile = open(self._spec.logfilename, 'w+')
+        else:
+            self._logfile = tempfile.TemporaryFile()
         env = dict(os.environ)
         env.update(self._spec.environ)
         env.update(self._add_env)
@@ -275,7 +290,7 @@ class Job(object):
             measure_cpu_costs = False
         try_start = lambda: subprocess.Popen(args=cmdline,
                                              stderr=subprocess.STDOUT,
-                                             stdout=self._tempfile,
+                                             stdout=self._logfile,
                                              cwd=self._spec.cwd,
                                              shell=self._spec.shell,
                                              env=env)
@@ -285,9 +300,9 @@ class Job(object):
                 self._process = try_start()
                 break
             except OSError:
-                message('WARNING',
-                        'Failed to start %s, retrying in %f seconds' %
-                        (self._spec.shortname, delay))
+                message(
+                    'WARNING', 'Failed to start %s, retrying in %f seconds' %
+                    (self._spec.shortname, delay))
                 time.sleep(delay)
                 delay *= 2
         else:
@@ -298,7 +313,7 @@ class Job(object):
         """Poll current state of the job. Prints messages at completion."""
 
         def stdout(self=self):
-            stdout = read_from_start(self._tempfile)
+            stdout = read_from_start(self._logfile)
             self.result.message = stdout[-_MAX_RESULT_SIZE:]
             return stdout
 
@@ -307,13 +322,12 @@ class Job(object):
             self.result.elapsed_time = elapsed
             if self._process.returncode != 0:
                 if self._retries < self._spec.flake_retries:
-                    message(
-                        'FLAKE',
-                        '%s [ret=%d, pid=%d]' %
-                        (self._spec.shortname, self._process.returncode,
-                         self._process.pid),
-                        stdout(),
-                        do_newline=True)
+                    message('FLAKE',
+                            '%s [ret=%d, pid=%d]' %
+                            (self._spec.shortname, self._process.returncode,
+                             self._process.pid),
+                            stdout(),
+                            do_newline=True)
                     self._retries += 1
                     self.result.num_failures += 1
                     self.result.retries = self._timeout_retries + self._retries
@@ -322,13 +336,12 @@ class Job(object):
                 else:
                     self._state = _FAILURE
                     if not self._suppress_failure_message:
-                        message(
-                            'FAILED',
-                            '%s [ret=%d, pid=%d, time=%.1fsec]' %
-                            (self._spec.shortname, self._process.returncode,
-                             self._process.pid, elapsed),
-                            stdout(),
-                            do_newline=True)
+                        message('FAILED',
+                                '%s [ret=%d, pid=%d, time=%.1fsec]' %
+                                (self._spec.shortname, self._process.returncode,
+                                 self._process.pid, elapsed),
+                                stdout(),
+                                do_newline=True)
                     self.result.state = 'FAILED'
                     self.result.num_failures += 1
                     self.result.returncode = self._process.returncode
@@ -345,18 +358,17 @@ class Job(object):
                     if real > 0.5:
                         cores = (user + sys) / real
                         self.result.cpu_measured = float('%.01f' % cores)
-                        self.result.cpu_estimated = float(
-                            '%.01f' % self._spec.cpu_cost)
+                        self.result.cpu_estimated = float('%.01f' %
+                                                          self._spec.cpu_cost)
                         measurement = '; cpu_cost=%.01f; estimated=%.01f' % (
                             self.result.cpu_measured, self.result.cpu_estimated)
                 if not self._quiet_success:
-                    message(
-                        'PASSED',
-                        '%s [time=%.1fsec, retries=%d:%d%s]' %
-                        (self._spec.shortname, elapsed, self._retries,
-                         self._timeout_retries, measurement),
-                        stdout() if self._spec.verbose_success else None,
-                        do_newline=self._newline_on_success or self._travis)
+                    message('PASSED',
+                            '%s [time=%.1fsec, retries=%d:%d%s]' %
+                            (self._spec.shortname, elapsed, self._retries,
+                             self._timeout_retries, measurement),
+                            stdout() if self._spec.verbose_success else None,
+                            do_newline=self._newline_on_success or self._travis)
                 self.result.state = 'PASSED'
         elif (self._state == _RUNNING and
               self._spec.timeout_seconds is not None and
@@ -364,11 +376,11 @@ class Job(object):
             elapsed = time.time() - self._start
             self.result.elapsed_time = elapsed
             if self._timeout_retries < self._spec.timeout_retries:
-                message(
-                    'TIMEOUT_FLAKE',
-                    '%s [pid=%d]' % (self._spec.shortname, self._process.pid),
-                    stdout(),
-                    do_newline=True)
+                message('TIMEOUT_FLAKE',
+                        '%s [pid=%d]' %
+                        (self._spec.shortname, self._process.pid),
+                        stdout(),
+                        do_newline=True)
                 self._timeout_retries += 1
                 self.result.num_failures += 1
                 self.result.retries = self._timeout_retries + self._retries
@@ -378,12 +390,11 @@ class Job(object):
                 # NOTE: job is restarted regardless of jobset's max_time setting
                 self.start()
             else:
-                message(
-                    'TIMEOUT',
-                    '%s [pid=%d, time=%.1fsec]' % (self._spec.shortname,
-                                                   self._process.pid, elapsed),
-                    stdout(),
-                    do_newline=True)
+                message('TIMEOUT',
+                        '%s [pid=%d, time=%.1fsec]' %
+                        (self._spec.shortname, self._process.pid, elapsed),
+                        stdout(),
+                        do_newline=True)
                 self.kill()
                 self.result.state = 'TIMEOUT'
                 self.result.num_failures += 1
@@ -486,8 +497,8 @@ class Jobset(object):
                 if self._remaining is not None and self._completed > 0:
                     now = time.time()
                     sofar = now - self._start_time
-                    remaining = sofar / self._completed * (
-                        self._remaining + len(self._running))
+                    remaining = sofar / self._completed * (self._remaining +
+                                                           len(self._running))
                     rstr = 'ETA %.1f sec; %s' % (remaining, rstr)
                 if waiting_for is not None:
                     wstr = ' next: %s @ %.2f cpu' % (waiting_for,
@@ -558,11 +569,11 @@ def run(cmdlines,
             message('SKIPPED', job.shortname, do_newline=True)
             resultset[job.shortname] = [skipped_job_result]
         return 0, resultset
-    js = Jobset(check_cancelled, maxjobs if maxjobs is not None else
-                _DEFAULT_MAX_JOBS, maxjobs_cpu_agnostic
-                if maxjobs_cpu_agnostic is not None else _DEFAULT_MAX_JOBS,
-                newline_on_success, travis, stop_on_failure, add_env,
-                quiet_success, max_time)
+    js = Jobset(
+        check_cancelled, maxjobs if maxjobs is not None else _DEFAULT_MAX_JOBS,
+        maxjobs_cpu_agnostic if maxjobs_cpu_agnostic is not None else
+        _DEFAULT_MAX_JOBS, newline_on_success, travis, stop_on_failure, add_env,
+        quiet_success, max_time)
     for cmdline, remaining in tag_remaining(cmdlines):
         if not js.start(cmdline):
             break

@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM debian:jessie
-
+FROM debian:10
+  
 # Install Git and basic packages.
 RUN apt-get update && apt-get install -y \
   autoconf \
@@ -49,80 +49,67 @@ RUN apt-get update && apt-get install -y \
 # Build profiling
 RUN apt-get update && apt-get install -y time && apt-get clean
 
+# Install Python 2.7
+RUN apt-get update && apt-get install -y python2.7 python-all-dev
+RUN curl https://bootstrap.pypa.io/get-pip.py | python2.7
+
 # Google Cloud platform API libraries
-RUN apt-get update && apt-get install -y python-pip && apt-get clean
-RUN pip install --upgrade google-api-python-client
+RUN pip install --upgrade google-api-python-client oauth2client
 
-#====================
-# Python dependencies
 
-# Install dependencies
+RUN mkdir /var/local/jenkins
 
-RUN apt-get update && apt-get install -y \
-    python-all-dev \
-    python3-all-dev \
-    python-pip
-
-# Install Python packages from PyPI
-RUN pip install --upgrade pip==9.0.1
-RUN pip install virtualenv
-RUN pip install futures==2.2.0 enum34==1.0.4 protobuf==3.5.0.post1 six==1.10.0 twisted==17.5.0
 
 #=================
 # C++ dependencies
 RUN apt-get update && apt-get -y install libgflags-dev libgtest-dev libc++-dev clang && apt-get clean
 
+
 #========================
 # Sanity test dependencies
+RUN apt-get update && apt-get -t buster install -y python3.7 python3-all-dev
+RUN curl https://bootstrap.pypa.io/get-pip.py | python3.7
+
+# Make Python 3.7 the default Python 3 version
+RUN update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.7 1
 RUN apt-get update && apt-get install -y \
-      python-pip \
       autoconf \
       automake \
       libtool \
       curl \
-      python-virtualenv \
-      python-lxml \
       shellcheck
-RUN pip install simplejson mako
+RUN python2 -m pip install simplejson mako virtualenv==16.7.9 lxml
+RUN python3 -m pip install simplejson mako virtualenv==16.7.9 lxml
 
-#======================================
-# More sanity test dependencies (bazel)
-RUN echo "deb http://http.debian.net/debian jessie-backports main" >> /etc/apt/sources.list
-RUN apt-get update
-RUN apt-get install -y -t jessie-backports openjdk-8-jdk
+# Install clang & clang-format
+RUN apt-get install -y clang clang-format
+
+# Install clang-tidy 6.0
+# This is because clang-tidy 7.0 started treating compiler errors as tidy errors
+# and there are a couple of files which are not properly compiled via tidy so it
+# should be using 6.0 version until all compilation errors are addressed.
+RUN apt-get install -y clang-tidy-6.0
+ENV CLANG_TIDY=clang-tidy-6.0
+
 
 #========================
 # Bazel installation
-RUN echo "deb [arch=amd64] http://storage.googleapis.com/bazel-apt stable jdk1.8" > /etc/apt/sources.list.d/bazel.list
-RUN curl https://bazel.build/bazel-release.pub.gpg | apt-key add -
-RUN apt-get -y update
-RUN apt-get -y install bazel
 
-# Pin Bazel to 0.9.0
-# Installing Bazel via apt-get first is required before installing 0.9.0 to
-# allow gRPC to build without errors. See https://github.com/grpc/grpc/issues/10553
-RUN curl -fSsL -O https://github.com/bazelbuild/bazel/releases/download/0.9.0/bazel-0.9.0-installer-linux-x86_64.sh
-RUN chmod +x ./bazel-0.9.0-installer-linux-x86_64.sh
-RUN ./bazel-0.9.0-installer-linux-x86_64.sh
+# Must be in sync with tools/bazel
+ENV BAZEL_VERSION 1.0.0
 
-RUN apt-get update && apt-get -y install wget xz-utils
-RUN wget http://releases.llvm.org/5.0.0/clang+llvm-5.0.0-linux-x86_64-ubuntu14.04.tar.xz
-RUN tar xf clang+llvm-5.0.0-linux-x86_64-ubuntu14.04.tar.xz
-RUN ln -s /clang+llvm-5.0.0-linux-x86_64-ubuntu14.04/bin/clang-format /usr/local/bin/clang-format
-ENV CLANG_FORMAT=clang-format
-RUN ln -s /clang+llvm-5.0.0-linux-x86_64-ubuntu14.04/bin/clang-tidy /usr/local/bin/clang-tidy
-ENV CLANG_TIDY=clang-tidy
+# The correct bazel version is already preinstalled, no need to use //tools/bazel wrapper.
+ENV DISABLE_BAZEL_WRAPPER 1
 
-# Prepare ccache
-RUN ln -s /usr/bin/ccache /usr/local/bin/gcc
-RUN ln -s /usr/bin/ccache /usr/local/bin/g++
-RUN ln -s /usr/bin/ccache /usr/local/bin/cc
-RUN ln -s /usr/bin/ccache /usr/local/bin/c++
-RUN ln -s /usr/bin/ccache /usr/local/bin/clang
-RUN ln -s /usr/bin/ccache /usr/local/bin/clang++
+RUN apt-get update && apt-get install -y wget && apt-get clean
+RUN wget "https://github.com/bazelbuild/bazel/releases/download/$BAZEL_VERSION/bazel-$BAZEL_VERSION-installer-linux-x86_64.sh" && \
+  bash ./bazel-$BAZEL_VERSION-installer-linux-x86_64.sh && \
+  rm bazel-$BAZEL_VERSION-installer-linux-x86_64.sh
 
-
-RUN mkdir /var/local/jenkins
+# Install buildifier v0.29.0
+RUN wget https://github.com/bazelbuild/buildtools/releases/download/0.29.0/buildifier
+RUN chmod +x buildifier
+RUN mv buildifier /usr/local/bin
 
 
 # Define the default command.

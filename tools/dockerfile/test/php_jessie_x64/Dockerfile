@@ -14,6 +14,7 @@
 
 FROM debian:jessie
 
+
 # Install Git and basic packages.
 RUN apt-get update && apt-get install -y \
   autoconf \
@@ -49,10 +50,6 @@ RUN apt-get update && apt-get install -y \
 # Build profiling
 RUN apt-get update && apt-get install -y time && apt-get clean
 
-# Google Cloud platform API libraries
-RUN apt-get update && apt-get install -y python-pip && apt-get clean
-RUN pip install --upgrade google-api-python-client
-
 #====================
 # Python dependencies
 
@@ -61,12 +58,16 @@ RUN pip install --upgrade google-api-python-client
 RUN apt-get update && apt-get install -y \
     python-all-dev \
     python3-all-dev \
-    python-pip
+    python-setuptools
 
 # Install Python packages from PyPI
-RUN pip install --upgrade pip==9.0.1
-RUN pip install virtualenv
-RUN pip install futures==2.2.0 enum34==1.0.4 protobuf==3.5.0.post1 six==1.10.0 twisted==17.5.0
+RUN curl https://bootstrap.pypa.io/get-pip.py | python2.7
+RUN pip install --upgrade pip==19.3.1
+RUN pip install virtualenv==16.7.9
+RUN pip install futures==2.2.0 enum34==1.0.4 protobuf==3.5.2.post1 six==1.10.0 twisted==17.5.0
+
+# Google Cloud platform API libraries
+RUN pip install --upgrade google-api-python-client oauth2client
 
 #=================
 # PHP dependencies
@@ -74,15 +75,11 @@ RUN pip install futures==2.2.0 enum34==1.0.4 protobuf==3.5.0.post1 six==1.10.0 t
 # Install dependencies
 
 RUN apt-get update && apt-get install -y \
-    git php5 php5-dev phpunit unzip
+    git php5 php5-dev unzip
 
-# Prepare ccache
-RUN ln -s /usr/bin/ccache /usr/local/bin/gcc
-RUN ln -s /usr/bin/ccache /usr/local/bin/g++
-RUN ln -s /usr/bin/ccache /usr/local/bin/cc
-RUN ln -s /usr/bin/ccache /usr/local/bin/c++
-RUN ln -s /usr/bin/ccache /usr/local/bin/clang
-RUN ln -s /usr/bin/ccache /usr/local/bin/clang++
+RUN wget https://phar.phpunit.de/phpunit-5.7.27.phar && \
+  mv phpunit-5.7.27.phar /usr/local/bin/phpunit && \
+  chmod +x /usr/local/bin/phpunit
 
 
 RUN mkdir /var/local/jenkins

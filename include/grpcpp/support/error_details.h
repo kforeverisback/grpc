@@ -34,12 +34,14 @@ namespace grpc {
 /// On success, returns status with OK.
 /// Returns status with \a INVALID_ARGUMENT, if failed to deserialize.
 /// Returns status with \a FAILED_PRECONDITION, if \a to is nullptr.
-Status ExtractErrorDetails(const Status& from, ::google::rpc::Status* to);
+grpc::Status ExtractErrorDetails(const grpc::Status& from,
+                                 ::google::rpc::Status* to);
 
 /// Map \a google::rpc::Status to a \a grpc::Status.
 /// Returns OK on success.
 /// Returns status with \a FAILED_PRECONDITION if \a to is nullptr.
-Status SetErrorDetails(const ::google::rpc::Status& from, Status* to);
+grpc::Status SetErrorDetails(const ::google::rpc::Status& from,
+                             grpc::Status* to);
 
 }  // namespace grpc
 

@@ -31,13 +31,14 @@
 #include <grpcpp/server_context.h>
 
 #include "src/core/lib/gpr/string.h"
-#include "src/core/lib/transport/byte_stream.h"
 #include "src/proto/grpc/testing/empty.pb.h"
 #include "src/proto/grpc/testing/messages.pb.h"
 #include "src/proto/grpc/testing/test.grpc.pb.h"
 #include "test/cpp/interop/server_helper.h"
 #include "test/cpp/util/test_config.h"
 
+DEFINE_bool(use_alts, false,
+            "Whether to use alts. Enable alts will disable tls.");
 DEFINE_bool(use_tls, false, "Whether to use tls.");
 DEFINE_string(custom_credentials_type, "", "User provided credentials type.");
 DEFINE_int32(port, 0, "Server port.");
@@ -76,13 +77,13 @@ void MaybeEchoMetadata(ServerContext* context) {
   if (iter != client_metadata.end()) {
     context->AddInitialMetadata(
         kEchoInitialMetadataKey,
-        grpc::string(iter->second.begin(), iter->second.end()));
+        std::string(iter->second.begin(), iter->second.end()));
   }
   iter = client_metadata.find(kEchoTrailingBinMetadataKey);
   if (iter != client_metadata.end()) {
     context->AddTrailingMetadata(
         kEchoTrailingBinMetadataKey,
-        grpc::string(iter->second.begin(), iter->second.end()));
+        std::string(iter->second.begin(), iter->second.end()));
   }
   // Check if client sent a magic key in the header that makes us echo
   // back the user-agent (for testing purpose)
@@ -92,7 +93,7 @@ void MaybeEchoMetadata(ServerContext* context) {
     if (iter != client_metadata.end()) {
       context->AddInitialMetadata(
           kEchoUserAgentKey,
-          grpc::string(iter->second.begin(), iter->second.end()));
+          std::string(iter->second.begin(), iter->second.end()));
     }
   }
 }
@@ -116,7 +117,7 @@ bool CheckExpectedCompression(const ServerContext& context,
               "Expected compression but got uncompressed request from client.");
       return false;
     }
-    if (!(inspector.GetMessageFlags() & GRPC_WRITE_INTERNAL_COMPRESS)) {
+    if (!(inspector.WasCompressed())) {
       gpr_log(GPR_ERROR,
               "Failure: Requested compression in a compressable request, but "
               "compression bit in message flags not set.");
@@ -124,7 +125,7 @@ bool CheckExpectedCompression(const ServerContext& context,
     }
   } else {
     // Didn't expect compression -> make sure the request is uncompressed
-    if (inspector.GetMessageFlags() & GRPC_WRITE_INTERNAL_COMPRESS) {
+    if (inspector.WasCompressed()) {
       gpr_log(GPR_ERROR,
               "Failure: Didn't requested compression, but compression bit in "
               "message flags set.");
@@ -136,15 +137,16 @@ bool CheckExpectedCompression(const ServerContext& context,
 
 class TestServiceImpl : public TestService::Service {
  public:
-  Status EmptyCall(ServerContext* context, const grpc::testing::Empty* request,
-                   grpc::testing::Empty* response) {
+  Status EmptyCall(ServerContext* context,
+                   const grpc::testing::Empty* /*request*/,
+                   grpc::testing::Empty* /*response*/) {
     MaybeEchoMetadata(context);
     return Status::OK;
   }
 
   // Response contains current timestamp. We ignore everything in the request.
   Status CacheableUnaryCall(ServerContext* context,
-                            const SimpleRequest* request,
+                            const SimpleRequest* /*request*/,
                             SimpleResponse* response) {
     gpr_timespec ts = gpr_now(GPR_CLOCK_PRECISE);
     std::string timestamp = std::to_string((long long unsigned)ts.tv_nsec);
@@ -265,7 +267,7 @@ class TestServiceImpl : public TestService::Service {
       if (request.response_parameters_size() != 0) {
         response.mutable_payload()->set_type(request.payload().type());
         response.mutable_payload()->set_body(
-            grpc::string(request.response_parameters(0).size(), '\0'));
+            std::string(request.response_parameters(0).size(), '\0'));
         int time_us;
         if ((time_us = request.response_parameters(0).interval_us()) > 0) {
           // Sleep before response if needed
@@ -285,7 +287,7 @@ class TestServiceImpl : public TestService::Service {
   }
 
   Status HalfDuplexCall(
-      ServerContext* context,
+      ServerContext* /*context*/,
       ServerReaderWriter<StreamingOutputCallResponse,
                          StreamingOutputCallRequest>* stream) {
     std::vector<StreamingOutputCallRequest> requests;
@@ -303,7 +305,7 @@ class TestServiceImpl : public TestService::Service {
                       "Request does not have response parameters.");
       }
       response.mutable_payload()->set_body(
-          grpc::string(requests[i].response_parameters(0).size(), '\0'));
+          std::string(requests[i].response_parameters(0).size(), '\0'));
       write_success = stream->Write(response);
     }
     if (write_success) {
@@ -315,13 +317,28 @@ class TestServiceImpl : public TestService::Service {
 };
 
 void grpc::testing::interop::RunServer(
-    std::shared_ptr<ServerCredentials> creds) {
-  RunServer(creds, FLAGS_port, nullptr);
+    const std::shared_ptr<ServerCredentials>& creds) {
+  RunServer(creds, FLAGS_port, nullptr, nullptr);
 }
 
 void grpc::testing::interop::RunServer(
-    std::shared_ptr<ServerCredentials> creds, const int port,
+    const std::shared_ptr<ServerCredentials>& creds,
+    std::unique_ptr<std::vector<std::unique_ptr<ServerBuilderOption>>>
+        server_options) {
+  RunServer(creds, FLAGS_port, nullptr, std::move(server_options));
+}
+
+void grpc::testing::interop::RunServer(
+    const std::shared_ptr<ServerCredentials>& creds, const int port,
     ServerStartedCondition* server_started_condition) {
+  RunServer(creds, port, server_started_condition, nullptr);
+}
+
+void grpc::testing::interop::RunServer(
+    const std::shared_ptr<ServerCredentials>& creds, const int port,
+    ServerStartedCondition* server_started_condition,
+    std::unique_ptr<std::vector<std::unique_ptr<ServerBuilderOption>>>
+        server_options) {
   GPR_ASSERT(port != 0);
   std::ostringstream server_address;
   server_address << "0.0.0.0:" << port;
@@ -333,6 +350,11 @@ void grpc::testing::interop::RunServer(
   ServerBuilder builder;
   builder.RegisterService(&service);
   builder.AddListeningPort(server_address.str(), creds);
+  if (server_options != nullptr) {
+    for (size_t i = 0; i < server_options->size(); i++) {
+      builder.SetOption(std::move((*server_options)[i]));
+    }
+  }
   if (FLAGS_max_send_message_size >= 0) {
     builder.SetMaxSendMessageSize(FLAGS_max_send_message_size);
   }

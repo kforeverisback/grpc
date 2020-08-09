@@ -25,19 +25,25 @@ cd DistribTest
 
 # TODO(jtattermusch): make sure we don't pollute the global nuget cache with
 # the nugets being tested.
-dotnet restore
+dotnet restore DistribTestDotNet.csproj
 
-dotnet build
-dotnet publish
+dotnet build DistribTestDotNet.csproj
+dotnet publish -f netcoreapp2.1 DistribTestDotNet.csproj
+dotnet publish -f net45 DistribTestDotNet.csproj
 
-# .NET 4.5 target after dotnet build
-mono bin/Debug/net45/*-x64/DistribTest.exe
+ls -R bin
 
-# .NET 4.5 target after dotnet publish
-mono bin/Debug/net45/*-x64/publish/DistribTest.exe
+if [ "${SKIP_MONO_DISTRIBTEST}" != "1" ]
+then
+  # .NET 4.5 target after dotnet build
+  mono bin/Debug/net45/publish/DistribTestDotNet.exe
+
+  # .NET 4.5 target after dotnet publish
+  mono bin/Debug/net45/publish/DistribTestDotNet.exe
+fi
 
 # .NET Core target after dotnet build
-dotnet exec bin/Debug/netcoreapp1.0/DistribTest.dll
+dotnet exec bin/Debug/netcoreapp2.1/DistribTestDotNet.dll
 
 # .NET Core target after dotnet publish
-dotnet exec bin/Debug/netcoreapp1.0/publish/DistribTest.dll
+dotnet exec bin/Debug/netcoreapp2.1/publish/DistribTestDotNet.dll

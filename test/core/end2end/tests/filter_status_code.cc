@@ -16,6 +16,14 @@
  *
  */
 
+/* This test verifies -
+ * 1) grpc_call_final_info passed to the filters on destroying a call contains
+ * the proper status.
+ * 2) If the response has both an HTTP status code and a gRPC status code, then
+ * we should prefer the gRPC status code as mentioned in
+ * https://github.com/grpc/grpc/blob/master/doc/http-grpc-status-mapping.md
+ */
+
 #include "test/core/end2end/end2end_tests.h"
 
 #include <limits.h>
@@ -126,10 +134,9 @@ static void test_request(grpc_end2end_test_config config) {
   gpr_mu_unlock(&g_mu);
 
   gpr_timespec deadline = five_seconds_from_now();
-  c = grpc_channel_create_call(
-      f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
-      grpc_slice_from_static_string("/foo"),
-      get_host_override_slice("foo.test.google.fr", config), deadline, nullptr);
+  c = grpc_channel_create_call(f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
+                               grpc_slice_from_static_string("/foo"), nullptr,
+                               deadline, nullptr);
   GPR_ASSERT(c);
   gpr_mu_lock(&g_mu);
   g_client_call_stack = grpc_call_get_call_stack(c);
@@ -250,6 +257,24 @@ typedef struct final_status_data {
   grpc_call_stack* call;
 } final_status_data;
 
+static void server_start_transport_stream_op_batch(
+    grpc_call_element* elem, grpc_transport_stream_op_batch* op) {
+  auto* data = static_cast<final_status_data*>(elem->call_data);
+  gpr_mu_lock(&g_mu);
+  if (data->call == g_server_call_stack) {
+    if (op->send_initial_metadata) {
+      auto* batch = op->payload->send_initial_metadata.send_initial_metadata;
+      if (batch->idx.named.status != nullptr) {
+        /* Replace the HTTP status with 404 */
+        grpc_metadata_batch_substitute(batch, batch->idx.named.status,
+                                       GRPC_MDELEM_STATUS_404);
+      }
+    }
+  }
+  gpr_mu_unlock(&g_mu);
+  grpc_call_next_op(elem, op);
+}
+
 static grpc_error* init_call_elem(grpc_call_element* elem,
                                   const grpc_call_element_args* args) {
   final_status_data* data = static_cast<final_status_data*>(elem->call_data);
@@ -259,7 +284,7 @@ static grpc_error* init_call_elem(grpc_call_element* elem,
 
 static void client_destroy_call_elem(grpc_call_element* elem,
                                      const grpc_call_final_info* final_info,
-                                     grpc_closure* ignored) {
+                                     grpc_closure* /*ignored*/) {
   final_status_data* data = static_cast<final_status_data*>(elem->call_data);
   gpr_mu_lock(&g_mu);
   // Some fixtures, like proxies, will spawn intermidiate calls
@@ -274,7 +299,7 @@ static void client_destroy_call_elem(grpc_call_element* elem,
 
 static void server_destroy_call_elem(grpc_call_element* elem,
                                      const grpc_call_final_info* final_info,
-                                     grpc_closure* ignored) {
+                                     grpc_closure* /*ignored*/) {
   final_status_data* data = static_cast<final_status_data*>(elem->call_data);
   gpr_mu_lock(&g_mu);
   // Some fixtures, like proxies, will spawn intermidiate calls
@@ -287,12 +312,12 @@ static void server_destroy_call_elem(grpc_call_element* elem,
   gpr_mu_unlock(&g_mu);
 }
 
-static grpc_error* init_channel_elem(grpc_channel_element* elem,
-                                     grpc_channel_element_args* args) {
+static grpc_error* init_channel_elem(grpc_channel_element* /*elem*/,
+                                     grpc_channel_element_args* /*args*/) {
   return GRPC_ERROR_NONE;
 }
 
-static void destroy_channel_elem(grpc_channel_element* elem) {}
+static void destroy_channel_elem(grpc_channel_element* /*elem*/) {}
 
 static const grpc_channel_filter test_client_filter = {
     grpc_call_next_op,
@@ -308,7 +333,7 @@ static const grpc_channel_filter test_client_filter = {
     "client_filter_status_code"};
 
 static const grpc_channel_filter test_server_filter = {
-    grpc_call_next_op,
+    server_start_transport_stream_op_batch,
     grpc_channel_next_op,
     sizeof(final_status_data),
     init_call_elem,

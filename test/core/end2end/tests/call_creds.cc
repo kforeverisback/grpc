@@ -36,7 +36,7 @@ static const char iam_selector[] = "selector";
 static const char overridden_iam_token[] = "overridden_token";
 static const char overridden_iam_selector[] = "overridden_selector";
 
-typedef enum { NONE, OVERRIDE, DESTROY } override_mode;
+typedef enum { NONE, OVERRIDE, DESTROY, FAIL } override_mode;
 
 static void* tag(intptr_t t) { return (void*)t; }
 
@@ -156,11 +156,9 @@ static void request_response_with_payload_and_call_creds(
   cqv = cq_verifier_create(f.cq);
 
   gpr_timespec deadline = five_seconds_from_now();
-  c = grpc_channel_create_call(
-      f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
-      grpc_slice_from_static_string("/foo"),
-      get_host_override_slice("foo.test.google.fr:1234", config), deadline,
-      nullptr);
+  c = grpc_channel_create_call(f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
+                               grpc_slice_from_static_string("/foo"), nullptr,
+                               deadline, nullptr);
   GPR_ASSERT(c);
   creds = grpc_google_iam_credentials_create(iam_token, iam_selector, nullptr);
   GPR_ASSERT(creds != nullptr);
@@ -176,6 +174,7 @@ static void request_response_with_payload_and_call_creds(
       GPR_ASSERT(grpc_call_set_credentials(c, creds) == GRPC_CALL_OK);
       break;
     case DESTROY:
+    case FAIL:
       GPR_ASSERT(grpc_call_set_credentials(c, nullptr) == GRPC_CALL_OK);
       break;
   }
@@ -292,8 +291,6 @@ static void request_response_with_payload_and_call_creds(
   GPR_ASSERT(status == GRPC_STATUS_OK);
   GPR_ASSERT(0 == grpc_slice_str_cmp(details, "xyz"));
   GPR_ASSERT(0 == grpc_slice_str_cmp(call_details.method, "/foo"));
-  validate_host_override_string("foo.test.google.fr:1234", call_details.host,
-                                config);
   GPR_ASSERT(was_cancelled == 0);
   GPR_ASSERT(byte_buffer_eq_string(request_payload_recv, "hello world"));
   GPR_ASSERT(byte_buffer_eq_string(response_payload_recv, "hello you"));
@@ -316,6 +313,7 @@ static void request_response_with_payload_and_call_creds(
                                    overridden_iam_selector));
       break;
     case DESTROY:
+    case FAIL:
       GPR_ASSERT(!contains_metadata(&request_metadata_recv,
                                     GRPC_IAM_AUTHORIZATION_TOKEN_METADATA_KEY,
                                     iam_token));
@@ -371,6 +369,13 @@ static void test_request_response_with_payload_and_deleted_call_creds(
       DESTROY);
 }
 
+static void test_request_response_with_payload_fail_to_send_call_creds(
+    grpc_end2end_test_config config) {
+  request_response_with_payload_and_call_creds(
+      "test_request_response_with_payload_fail_to_send_call_creds", config,
+      FAIL);
+}
+
 static void test_request_with_server_rejecting_client_creds(
     grpc_end2end_test_config config) {
   grpc_op ops[6];
@@ -396,11 +401,9 @@ static void test_request_with_server_rejecting_client_creds(
   f = begin_test(config, "test_request_with_server_rejecting_client_creds", 1);
   cqv = cq_verifier_create(f.cq);
 
-  c = grpc_channel_create_call(
-      f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
-      grpc_slice_from_static_string("/foo"),
-      get_host_override_slice("foo.test.google.fr:1234", config), deadline,
-      nullptr);
+  c = grpc_channel_create_call(f.client, nullptr, GRPC_PROPAGATE_DEFAULTS, f.cq,
+                               grpc_slice_from_static_string("/foo"), nullptr,
+                               deadline, nullptr);
   GPR_ASSERT(c);
 
   creds = grpc_google_iam_credentials_create(iam_token, iam_selector, nullptr);
@@ -477,6 +480,10 @@ void call_creds(grpc_end2end_test_config config) {
     test_request_response_with_payload_and_overridden_call_creds(config);
     test_request_response_with_payload_and_deleted_call_creds(config);
     test_request_with_server_rejecting_client_creds(config);
+  }
+  if (config.feature_mask &
+      FEATURE_MASK_DOES_NOT_SUPPORT_SEND_CALL_CREDENTIALS) {
+    test_request_response_with_payload_fail_to_send_call_creds(config);
   }
 }
 

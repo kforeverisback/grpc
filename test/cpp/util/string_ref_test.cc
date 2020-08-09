@@ -22,6 +22,8 @@
 
 #include <gtest/gtest.h>
 
+#include "test/core/util/test_config.h"
+
 namespace grpc {
 namespace {
 
@@ -60,7 +62,7 @@ TEST_F(StringRefTest, FromString) {
 TEST_F(StringRefTest, CopyConstructor) {
   string_ref s1(kTestString);
   ;
-  string_ref s2(s1);
+  const string_ref& s2(s1);
   EXPECT_EQ(s1.length(), s2.length());
   EXPECT_EQ(s1.data(), s2.data());
 }
@@ -197,6 +199,7 @@ TEST_F(StringRefTest, ComparisonOperators) {
 }  // namespace grpc
 
 int main(int argc, char** argv) {
+  grpc::testing::TestEnvironment env(argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

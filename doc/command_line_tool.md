@@ -32,7 +32,7 @@ The command line tool should support the following things:
 
 To use the tool, you need to get the grpc repository and make sure your system
 has the prerequisites for building grpc from source, given in the [installation
-instructions](https://github.com/grpc/grpc/blob/master/INSTALL.md).
+instructions](../BUILDING.md).
 
 In order to build the grpc command line tool from a fresh clone of the grpc
 repository, you need to run the following command to update submodules:
@@ -41,17 +41,23 @@ repository, you need to run the following command to update submodules:
 git submodule update --init
 ```
 
-You also need to have the gflags library installed on your system. On Linux
-systems, gflags can be installed with the following command:
-
+You also need to have the gflags library installed on your system. gflags can be
+installed with the following command:
+Linux:
 ```
 sudo apt-get install libgflags-dev
 ```
+Mac systems with Homebrew:
+```
+brew install gflags
+```
 
-Once the prerequisites are satisfied, you can build the command line tool with
-the command:
+Once the prerequisites are satisfied, you can build with cmake:
 
 ```
+$ mkdir -p cmake/build
+$ cd cmake/build
+$ cmake -DgRPC_BUILD_TESTS=ON ../..
 $ make grpc_cli
 ```
 
@@ -65,6 +71,8 @@ guides for
 [Java](https://github.com/grpc/grpc-java/blob/master/documentation/server-reflection-tutorial.md#enable-server-reflection)
 , [C++](https://github.com/grpc/grpc/blob/master/doc/server_reflection_tutorial.md)
 and [Go](https://github.com/grpc/grpc-go/blob/master/Documentation/server-reflection-tutorial.md)
+
+Local proto files can be used as an alternative. See instructions [below](#Call-a-remote-method).
 
 ## Usage
 
@@ -180,6 +188,10 @@ We can send RPCs to a server and get responses using `grpc_cli call` command.
 
     If the proto file is not under the current directory, you can use
     `--proto_path` to specify a new search root.
+
+    Note that the tool will always attempt to use the reflection service first,
+    falling back to local proto files if the service is not found. Use
+    `--noremotedb` to avoid attempting to use the reflection service.
 
 -   Send non-proto rpc
 

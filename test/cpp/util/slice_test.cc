@@ -16,26 +16,36 @@
  *
  */
 
-#include <grpcpp/support/slice.h>
+#include <grpc++/support/slice.h>
+#include <grpcpp/impl/grpc_library.h>
 
 #include <grpc/grpc.h>
 #include <grpc/slice.h>
 #include <gtest/gtest.h>
 
+#include "test/core/util/test_config.h"
+
 namespace grpc {
+
+static internal::GrpcLibraryInitializer g_gli_initializer;
+
 namespace {
 
 const char* kContent = "hello xxxxxxxxxxxxxxxxxxxx world";
 
 class SliceTest : public ::testing::Test {
  protected:
-  void CheckSliceSize(const Slice& s, const grpc::string& content) {
+  static void SetUpTestCase() { grpc_init(); }
+
+  static void TearDownTestCase() { grpc_shutdown(); }
+
+  void CheckSliceSize(const Slice& s, const std::string& content) {
     EXPECT_EQ(content.size(), s.size());
   }
-  void CheckSlice(const Slice& s, const grpc::string& content) {
+  void CheckSlice(const Slice& s, const std::string& content) {
     EXPECT_EQ(content.size(), s.size());
     EXPECT_EQ(content,
-              grpc::string(reinterpret_cast<const char*>(s.begin()), s.size()));
+              std::string(reinterpret_cast<const char*>(s.begin()), s.size()));
   }
 };
 
@@ -72,7 +82,7 @@ TEST_F(SliceTest, SliceNew) {
 }
 
 TEST_F(SliceTest, SliceNewDoNothing) {
-  Slice spp(const_cast<char*>(kContent), strlen(kContent), [](void* p) {});
+  Slice spp(const_cast<char*>(kContent), strlen(kContent), [](void* /*p*/) {});
   CheckSlice(spp, kContent);
 }
 
@@ -96,7 +106,7 @@ TEST_F(SliceTest, SliceNewWithUserData) {
 
 TEST_F(SliceTest, SliceNewLen) {
   Slice spp(const_cast<char*>(kContent), strlen(kContent),
-            [](void* p, size_t l) { EXPECT_EQ(l, strlen(kContent)); });
+            [](void* /*p*/, size_t l) { EXPECT_EQ(l, strlen(kContent)); });
   CheckSlice(spp, kContent);
 }
 
@@ -127,9 +137,8 @@ TEST_F(SliceTest, Cslice) {
 }  // namespace grpc
 
 int main(int argc, char** argv) {
+  grpc::testing::TestEnvironment env(argc, argv);
   ::testing::InitGoogleTest(&argc, argv);
-  grpc_init();
   int ret = RUN_ALL_TESTS();
-  grpc_shutdown();
   return ret;
 }
